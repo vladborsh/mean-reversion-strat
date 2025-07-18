@@ -142,15 +142,13 @@ def run_strategy(df, config_class=None, timeframe='15m'):
 # Example usage
 if __name__ == '__main__':
     print("📈 Fetching EUR/USD data...")
-    # Fetch data with caching enabled (default)
-    # First run will fetch from API and cache, subsequent runs will use cache
-    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='15m', use_cache=True)
+    # Fetch data with caching disabled
+    # Data will always be fetched fresh from API
+    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='5m', use_cache=False)
     df = fetcher.fetch(years=1)
     print(f"✅ Data loaded: {len(df)} rows ({df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')})")
 
-    # Show cache information
-    cache_info = fetcher.get_cache_info()
-    print(f"💾 Cache: {cache_info['total_files']} files, {cache_info['total_size_mb']:.1f} MB")
+    # Cache is disabled - always fetching fresh data
 
     # Run strategy with 1% risk management (default configuration)
     print("\n" + "="*60)
@@ -175,12 +173,11 @@ if __name__ == '__main__':
         import traceback
         traceback.print_exc()
 
-    # Demonstrate cache performance
-    print(f"\n💡 Pro tip: Run this script again to see caching in action!")
+    # Cache is disabled - data is always fetched fresh from API
+    print(f"\n💡 Pro tip: Enable caching (use_cache=True) for faster subsequent runs!")
     
-    # Uncomment to clear cache if needed
-    # print(f"\n🗑️  Clearing cache...")
-    # fetcher.clear_cache()
+    # Cache is disabled, but you can re-enable it by setting use_cache=True above
+    # To clear existing cache files if needed, run: python cache_manager.py clear
 
     # Hyperparameter optimization example (commented out for now)
     # print("\nRunning hyperparameter optimization...")

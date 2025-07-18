@@ -10,9 +10,10 @@ from src.data_fetcher import DataFetcher
 from main import run_strategy
 
 def run_forex_strategy():
-    """Run strategy on EUR/USD forex pair"""
+    """Run strategy on EUR/USD forex pair (uses Capital.com if available)"""
     print("=== FOREX STRATEGY: EUR/USD ===")
-    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+    # Uses Capital.com primary, yfinance fallback
+    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h', use_cache=False)
     df = fetcher.fetch(years=2)
     print(f"Data: {len(df)} hourly bars")
     
@@ -26,7 +27,7 @@ def run_forex_strategy():
 def run_crypto_strategy():
     """Run strategy on BTC/USDT crypto pair"""
     print("=== CRYPTO STRATEGY: BTC/USDT ===")
-    fetcher = DataFetcher(source='crypto', symbol='BTC/USDT', timeframe='1h')
+    fetcher = DataFetcher(source='crypto', symbol='BTC/USDT', timeframe='1h', use_cache=False)
     df = fetcher.fetch(years=1)
     print(f"Data: {len(df)} hourly bars")
     
@@ -38,9 +39,10 @@ def run_crypto_strategy():
     return run_strategy(df, params)
 
 def run_index_strategy():
-    """Run strategy on S&P 500 index"""
+    """Run strategy on S&P 500 index (uses Capital.com if available)"""
     print("=== INDEX STRATEGY: S&P 500 ===")
-    fetcher = DataFetcher(source='indices', symbol='^GSPC', timeframe='1d')
+    # Uses Capital.com primary, yfinance fallback
+    fetcher = DataFetcher(source='indices', symbol='^GSPC', timeframe='1d', use_cache=False)
     df = fetcher.fetch(years=5)
     print(f"Data: {len(df)} daily bars")
     
@@ -84,4 +86,12 @@ def main():
         run_forex_strategy()
 
 if __name__ == '__main__':
+    print("📊 Mean Reversion Strategy Examples")
+    print("=" * 40)
+    print()
+    print("💡 TIP: For Capital.com-specific examples and setup, run:")
+    print("    python examples/capital_com_examples.py")
+    print("📚 Documentation: docs/CAPITAL_COM_COMPLETE.md")
+    print()
+    
     main()

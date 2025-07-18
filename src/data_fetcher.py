@@ -45,12 +45,14 @@ class DataFetcher:
                 '1d': ['capital_com', 'alpha_vantage', 'yfinance']
             },
             'crypto': {
+                '5m': ['ccxt', 'yfinance'],
                 '15m': ['ccxt', 'yfinance'],
                 '1h': ['ccxt', 'yfinance'],
                 '4h': ['ccxt', 'yfinance'],
                 '1d': ['ccxt', 'yfinance']
             },
             'indices': {
+                '5m': ['capital_com', 'alpha_vantage', 'yfinance'],
                 '15m': ['capital_com', 'alpha_vantage', 'yfinance'],
                 '1h': ['capital_com', 'alpha_vantage', 'yfinance'],
                 '4h': ['capital_com', 'alpha_vantage', 'yfinance'],

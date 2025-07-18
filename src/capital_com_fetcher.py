@@ -6,6 +6,15 @@ from datetime import datetime, timedelta
 import os
 from typing import Optional, Dict, Any
 
+from .helpers import (
+    format_trading_session_info,
+    is_weekend,
+    is_trading_hour,
+    get_next_valid_time,
+    adjust_end_time,
+    get_last_valid_time
+)
+
 class CapitalComDataFetcher:
     """
     Data fetcher for Capital.com API
@@ -45,6 +54,7 @@ class CapitalComDataFetcher:
         
         # Timeframe mappings
         self.timeframe_mapping = {
+            '5m': 'MINUTE_5',
             '15m': 'MINUTE_15',
             '1h': 'HOUR',
             '4h': 'HOUR_4', 
@@ -232,7 +242,7 @@ class CapitalComDataFetcher:
         Args:
             symbol: Symbol to fetch (will be mapped to Capital.com epic)
             asset_type: 'forex' or 'indices'
-            timeframe: '15m', '1h', '4h', '1d'
+            timeframe: '5m', '15m', '1h', '4h', '1d'
             years: Number of years of data to fetch
             
         Returns:
@@ -243,12 +253,32 @@ class CapitalComDataFetcher:
             epic = self._map_symbol(symbol, asset_type)
             print(f"📊 Fetching {timeframe} {asset_type} data for {symbol} (epic: {epic}) from Capital.com...")
             
+            # Show trading hours info
+            print(self.get_trading_hours_info())
+            
             # Map timeframe
             resolution = self.timeframe_mapping.get(timeframe, 'HOUR')
             
-            # Calculate date range
+            # Calculate date range with trading hours adjustment
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=365 * years)
+            
+            # Adjust dates to valid trading times
+            original_start = start_date
+            original_end = end_date
+            
+            start_date = get_next_valid_time(start_date)
+            # Ensure end date is within trading hours
+            if not is_trading_hour(end_date):
+                # Get the most recent valid trading time
+                end_date = get_last_valid_time(end_date)
+            
+            if original_start != start_date:
+                print(f"📅 Adjusted start time: {format_trading_session_info(original_start)} → {format_trading_session_info(start_date)}")
+            if original_end != end_date:
+                print(f"📅 Adjusted end time: {format_trading_session_info(original_end)} → {format_trading_session_info(end_date)}")
+            
+            print(f"📅 Final date range: {start_date.strftime('%Y-%m-%d %H:%M')} to {end_date.strftime('%Y-%m-%d %H:%M')} UTC")
             
             # Format dates for API
             from_date = start_date.strftime('%Y-%m-%dT%H:%M:%S')
@@ -268,8 +298,19 @@ class CapitalComDataFetcher:
             
             # Fetch data in chunks if needed (API has 1000 record limit)
             while current_from < end_date:
+                # Skip non-trading periods
+                if is_weekend(current_from) or not is_trading_hour(current_from):
+                    next_valid = get_next_valid_time(current_from)
+                    print(f"  ⏭️  Skipping non-trading period: {format_trading_session_info(current_from)} → {format_trading_session_info(next_valid)}")
+                    current_from = next_valid
+                    if current_from >= end_date:
+                        print(f"  🛑 Reached end date after skipping non-trading period, breaking loop")
+                        break
+                
                 # Calculate chunk end date
-                if timeframe == '15m':
+                if timeframe == '5m':
+                    chunk_days = 3  # ~864 records (3 days * 24 hours * 12 intervals/hour)
+                elif timeframe == '15m':
                     chunk_days = 10  # ~960 records
                 elif timeframe == '1h':
                     chunk_days = 41  # ~984 records
@@ -279,6 +320,11 @@ class CapitalComDataFetcher:
                     chunk_days = 1000  # No real limit for daily
                 
                 chunk_end = min(current_from + timedelta(days=chunk_days), end_date)
+                
+                # Ensure chunk_end is not before current_from (safety check)
+                if chunk_end <= current_from:
+                    print(f"  🛑 Invalid chunk range detected, breaking loop")
+                    break
                 
                 params['from'] = current_from.strftime('%Y-%m-%dT%H:%M:%S')
                 params['to'] = chunk_end.strftime('%Y-%m-%dT%H:%M:%S')
@@ -293,13 +339,59 @@ class CapitalComDataFetcher:
                 
                 if not prices:
                     print(f"  ⚠️  No data returned for chunk")
-                    break
+                    # Move to next valid time instead of breaking
+                    next_time = get_next_valid_time(chunk_end)
+                    # Ensure we're making progress to avoid infinite loop
+                    if next_time <= current_from:
+                        print(f"  🛑 Not making progress, breaking loop")
+                        break
+                    current_from = next_time
+                    continue
                 
                 all_data.extend(prices)
                 print(f"  ✅ Retrieved {len(prices)} records")
                 
-                # Move to next chunk
-                current_from = chunk_end
+                # Move to next chunk with trading hours consideration
+                # Check if we got any data and use the last timestamp + 1 time unit
+                if prices:
+                    last_timestamp_str = prices[-1]['snapshotTimeUTC']
+                    # Handle timezone info properly
+                    if last_timestamp_str.endswith('Z'):
+                        last_timestamp = datetime.fromisoformat(last_timestamp_str.replace('Z', '+00:00'))
+                    else:
+                        last_timestamp = datetime.fromisoformat(last_timestamp_str)
+                    
+                    # Convert to UTC if needed
+                    if last_timestamp.tzinfo is not None:
+                        last_timestamp = last_timestamp.utctimetuple()
+                        last_timestamp = datetime(*last_timestamp[:6])
+                    
+                    # Add appropriate time increment based on timeframe
+                    if timeframe == '5m':
+                        next_time = last_timestamp + timedelta(minutes=5)
+                    elif timeframe == '15m':
+                        next_time = last_timestamp + timedelta(minutes=15)
+                    elif timeframe == '1h':
+                        next_time = last_timestamp + timedelta(hours=1)
+                    elif timeframe == '4h':
+                        next_time = last_timestamp + timedelta(hours=4)
+                    else:  # 1d
+                        next_time = last_timestamp + timedelta(days=1)
+                    
+                    # Ensure we're at a valid trading time
+                    current_from = get_next_valid_time(next_time)
+                else:
+                    next_time = get_next_valid_time(chunk_end)
+                    # Ensure we're making progress
+                    if next_time <= current_from:
+                        print(f"  🛑 Not making progress in loop, breaking")
+                        break
+                    current_from = next_time
+                
+                # Safety check to prevent infinite loop when approaching end_date
+                if current_from >= end_date:
+                    print(f"  🛑 Reached end date while advancing to next chunk, breaking loop")
+                    break
                 
                 # Small delay between chunks
                 time.sleep(0.2)
@@ -331,8 +423,15 @@ class CapitalComDataFetcher:
             # Convert to DataFrame
             records = []
             for price in prices:
+                timestamp_str = price['snapshotTimeUTC']
+                timestamp = pd.to_datetime(timestamp_str)
+                
+                # Filter out non-trading hours
+                if is_weekend(timestamp) or not is_trading_hour(timestamp):
+                    continue
+                
                 record = {
-                    'timestamp': price['snapshotTimeUTC'],
+                    'timestamp': timestamp_str,
                     'open': float(price['openPrice']['bid']),
                     'high': float(price['highPrice']['bid']),
                     'low': float(price['lowPrice']['bid']),
@@ -340,6 +439,9 @@ class CapitalComDataFetcher:
                     'volume': int(price.get('lastTradedVolume', 0))  # Volume might not be available for all instruments
                 }
                 records.append(record)
+            
+            if not records:
+                return None
             
             df = pd.DataFrame(records)
             
@@ -380,22 +482,47 @@ class CapitalComDataFetcher:
         """Context manager exit - automatically close session"""
         self.close_session()
 
+    def get_trading_hours_info(self) -> str:
+        """Get information about trading hours"""
+        return """
+        📊 Trading Hours (UTC):
+        • Open: Sunday 22:00 UTC
+        • Close: Friday 21:00 UTC  
+        • Daily closure: 21:00-22:00 UTC (1 hour break)
+        • Weekend: Saturday & Sunday before 22:00 (closed)
+        
+        Note: All historical data fetching respects these trading hours
+        """
+
+
 def create_capital_com_fetcher() -> Optional[CapitalComDataFetcher]:
     """
-    Factory function to create Capital.com fetcher with credentials from environment
+    Create a CapitalComDataFetcher instance using environment variables.
+    
+    Required environment variables:
+    - CAPITAL_COM_API_KEY: Your Capital.com API key
+    - CAPITAL_COM_PASSWORD: Your Capital.com password
+    - CAPITAL_COM_IDENTIFIER: Your Capital.com identifier
+    - CAPITAL_COM_DEMO: Set to 'false' for live trading (optional, defaults to True)
+    
+    Returns:
+        CapitalComDataFetcher instance if all credentials are available, None otherwise
     """
     api_key = os.getenv('CAPITAL_COM_API_KEY')
-    password = os.getenv('CAPITAL_COM_PASSWORD') 
+    password = os.getenv('CAPITAL_COM_PASSWORD')
     identifier = os.getenv('CAPITAL_COM_IDENTIFIER')
+    demo = os.getenv('CAPITAL_COM_DEMO', 'true').lower() != 'false'
     
-    if not all([api_key, password, identifier]):
-        print("⚠️  Capital.com credentials not found in environment variables")
-        print("   Set CAPITAL_COM_API_KEY, CAPITAL_COM_PASSWORD, and CAPITAL_COM_IDENTIFIER")
+    if not api_key or not password or not identifier:
         return None
     
-    return CapitalComDataFetcher(
-        api_key=api_key,
-        password=password,
-        identifier=identifier,
-        demo=True  # Default to demo environment
-    )
+    try:
+        return CapitalComDataFetcher(
+            api_key=api_key,
+            password=password,
+            identifier=identifier,
+            demo=demo
+        )
+    except Exception as e:
+        print(f"Failed to create Capital.com fetcher: {e}")
+        return None

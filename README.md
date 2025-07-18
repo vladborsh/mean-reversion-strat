@@ -4,10 +4,12 @@ A comprehensive trading strategy implementation using Bollinger Bands and VWAP f
 
 ## Features
 
-- **Multi-Asset Support**: Forex (yfinance), Crypto (CCXT/Binance), Indices
+- **Multi-Asset Support**: Forex (Capital.com, yfinance), Crypto (CCXT/Binance), Indices (Capital.com, yfinance)
+- **Professional Data Sources**: Capital.com API for institutional-grade forex and indices data
 - **Technical Indicators**: Bollinger Bands + VWAP with standard deviation bands
 - **Risk Management**: Configurable stop loss and take profit
 - **Data Caching**: Automatic caching of fetched data for improved performance
+- **Trading Hours Handling**: Automatic forex market hours validation and data filtering
 - **Backtesting**: Full backtest engine with Backtrader
 - **Performance Metrics**: Win rate, Sharpe ratio, drawdown analysis
 - **Optimization**: Grid search for hyperparameter tuning
@@ -35,6 +37,26 @@ All required packages are already installed:
 - pandas (data manipulation)
 - numpy (numerical operations)
 - matplotlib (visualization)
+- requests (Capital.com API integration)
+
+### 4. Capital.com Integration (Optional)
+For professional forex and indices data, set up Capital.com credentials:
+
+```bash
+# Set environment variables for Capital.com API access
+export CAPITAL_COM_API_KEY="your_api_key"
+export CAPITAL_COM_PASSWORD="your_password"
+export CAPITAL_COM_IDENTIFIER="your_email@example.com"
+export CAPITAL_COM_DEMO="true"  # Use demo environment (set to 'false' for live)
+```
+
+**Benefits of Capital.com integration:**
+- High-frequency data (5m, 15m intervals)
+- Proper forex trading hours handling
+- Professional-grade institutional data
+- Automatic session management
+
+See [Capital.com Complete Guide](docs/CAPITAL_COM_COMPLETE.md) for detailed setup.
 
 ## Quick Start
 
@@ -46,12 +68,24 @@ python main.py
 
 ### Custom Data Source Examples
 
-#### Forex Trading (EUR/USD)
+#### Professional Forex Trading (Capital.com)
 ```python
 from data_fetcher import DataFetcher
-from main import run_strategy
 
+# Capital.com provides institutional-grade data with proper trading hours
+fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h', use_cache=True)
+data = fetcher.fetch(years=3)  # Automatically uses Capital.com if available
+run_strategy(data)
+
+# High-frequency trading with 15-minute data
+fetcher = DataFetcher(source='forex', symbol='GBPUSD=X', timeframe='15m', use_cache=True)
+data = fetcher.fetch(years=1)
+```
+
+#### Forex Trading (Yahoo Finance Fallback)
+```python
 # Data is automatically cached after first fetch
+# Falls back to yfinance if Capital.com not configured
 fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h', use_cache=True)
 data = fetcher.fetch(years=3)
 run_strategy(data)
@@ -67,9 +101,41 @@ run_strategy(data)
 
 #### Stock Index (S&P 500)
 ```python
+# Capital.com provides professional indices data
 fetcher = DataFetcher(source='indices', symbol='^GSPC', timeframe='1d', use_cache=True)
 data = fetcher.fetch(years=5)
 run_strategy(data)
+```
+
+## Data Sources and Providers
+
+The strategy supports multiple data providers with automatic fallback:
+
+### Forex Data
+1. **Capital.com** (Primary) - Professional institutional data
+   - ✅ 5m, 15m, 1h, 4h, 1d timeframes
+   - ✅ Proper trading hours handling  
+   - ✅ Major and cross currency pairs
+   - ✅ Free tier available
+2. **Yahoo Finance** (Fallback) - Reliable free data
+3. **Alpha Vantage** (Fallback) - API-based provider
+
+### Indices Data  
+1. **Capital.com** (Primary) - Professional market data
+2. **Yahoo Finance** (Fallback) - Major global indices
+3. **Alpha Vantage** (Fallback) - US markets focus
+
+### Crypto Data
+1. **CCXT/Binance** (Primary) - Real-time exchange data
+2. **Yahoo Finance** (Fallback) - Major crypto pairs
+
+### Provider Selection
+```python
+# Automatic provider selection based on availability
+fetcher = DataFetcher(source='forex', symbol='EURUSD=X')
+
+# Check which provider was used
+print(f"Using provider: {fetcher.provider_priority}")
 ```
 
 ## Data Caching
@@ -271,9 +337,28 @@ Each trade contains:
 4. **Visualization not showing**: Ensure matplotlib backend is properly configured
 
 ### Symbol Formats
-- **Forex**: Use Yahoo Finance format (e.g., 'EURUSD=X', 'GBPUSD=X')
+- **Forex**: Use Yahoo Finance format (e.g., 'EURUSD=X', 'GBPUSD=X') or simple format ('EURUSD', 'GBPUSD')
 - **Crypto**: Use exchange format (e.g., 'BTC/USDT', 'ETH/USDT')
-- **Indices**: Use Yahoo Finance format (e.g., '^GSPC', '^DJI', '^IXIC')
+- **Indices**: Use Yahoo Finance format (e.g., '^GSPC', '^DJI', '^IXIC') or tickers ('SPY', 'QQQ')
+
+### Capital.com Specific Issues
+
+1. **Missing credentials**: Set up environment variables for Capital.com API access
+   ```bash
+   export CAPITAL_COM_API_KEY="your_key"
+   export CAPITAL_COM_PASSWORD="your_password"
+   export CAPITAL_COM_IDENTIFIER="your_email"
+   ```
+
+2. **Session timeouts**: Use context manager for automatic session management
+   ```python
+   with create_capital_com_fetcher() as fetcher:
+       data = fetcher.fetch_historical_data('EURUSD', 'forex', '1h', 2)
+   ```
+
+3. **Trading hours validation**: Data is automatically filtered for forex trading hours
+   - Open: Sunday 22:00 UTC to Friday 21:00 UTC
+   - Daily break: 21:00-22:00 UTC excluded
 
 ## Advanced Usage
 
@@ -290,6 +375,24 @@ To adapt for live trading:
 2. Implement order execution through broker APIs
 3. Add position sizing based on account equity
 4. Include transaction costs and slippage
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Capital.com Complete Guide](docs/CAPITAL_COM_COMPLETE.md)** - Comprehensive setup, logic explanation, and troubleshooting
+- **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Detailed strategy logic and parameters
+- **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features and configuration
+- **[Caching System](docs/CACHING.md)** - Data caching implementation and management
+
+### Quick Reference
+
+| Topic | Documentation File | Description |
+|-------|-------------------|-------------|
+| **Capital.com Complete** | `CAPITAL_COM_COMPLETE.md` | Setup, architecture, trading hours logic, troubleshooting |
+| **Strategy Logic** | `STRATEGY_DOCUMENTATION.md` | Bollinger Bands + VWAP implementation |
+| **Risk Controls** | `RISK_MANAGEMENT.md` | Stop loss, take profit, position sizing |
+| **Performance** | `CACHING.md` | Cache configuration, performance optimization |
 
 ## Support
 
