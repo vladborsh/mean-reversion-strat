@@ -127,16 +127,78 @@ def plot_price_with_vwap_enhanced(df, bb, vwap, signals=None, orders=None):
     plt.tight_layout()
     plt.show()
 
-def plot_equity_curve(equity_curve):
-    """Plot portfolio equity curve."""
+def plot_equity_curve(equity_curve, equity_dates=None, save_path=None):
+    """Plot portfolio equity curve and save to file."""
+    import os
+    from datetime import datetime
+    import matplotlib.dates as mdates
+    from matplotlib.ticker import MaxNLocator
+    
     plt.figure(figsize=FIGURE_SIZES['equity'])
-    plt.plot(equity_curve)
-    plt.title('Portfolio Value Over Time')
-    plt.xlabel('Time')
-    plt.ylabel('Equity')
+    
+    # Use dates for x-axis if available, otherwise use indices
+    if equity_dates and len(equity_dates) == len(equity_curve):
+        plt.plot(equity_dates, equity_curve, color=COLORS['price'], linewidth=2)
+        # Format x-axis for better date display with 7-10 ticks maximum
+        ax = plt.gca()
+        
+        # Determine appropriate date format based on data span
+        date_span = equity_dates[-1] - equity_dates[0]
+        if date_span.days > 30:
+            # For longer periods, show only dates
+            formatter = mdates.DateFormatter('%Y-%m-%d')
+            locator = MaxNLocator(nbins=7)
+        elif date_span.days > 1:
+            # For multi-day periods, show date and hour
+            formatter = mdates.DateFormatter('%m-%d %H:%M')
+            locator = MaxNLocator(nbins=8)
+        else:
+            # For single day or short periods, show time
+            formatter = mdates.DateFormatter('%H:%M')
+            locator = MaxNLocator(nbins=10)
+        
+        ax.xaxis.set_major_formatter(formatter)
+        ax.xaxis.set_major_locator(locator)
+        
+        # Reduce tick density and improve readability
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        plt.xlabel('Date/Time', fontsize=12)
+    else:
+        plt.plot(equity_curve, color=COLORS['price'], linewidth=2)
+        plt.xlabel('Time', fontsize=12)
+    
+    plt.title('Portfolio Value Over Time', fontsize=14, fontweight='bold')
+    plt.ylabel('Portfolio Value ($)', fontsize=12)
     plt.grid(True, alpha=0.3)
+    
+    # Add some statistics to the plot
+    if len(equity_curve) > 1:
+        initial_value = equity_curve[0]
+        final_value = equity_curve[-1]
+        total_return = ((final_value - initial_value) / initial_value) * 100
+        plt.text(0.02, 0.98, f'Total Return: {total_return:+.2f}%', 
+                transform=plt.gca().transAxes, fontsize=10, 
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
     plt.tight_layout()
-    plt.show()
+    
+    if save_path:
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"   📈 Equity curve saved: {save_path}")
+        plt.close()  # Close to free memory
+        return save_path
+    else:
+        # Fallback to default location
+        plots_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'plots')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_path = os.path.join(plots_dir, f'equity_curve_{timestamp}.png')
+        os.makedirs(plots_dir, exist_ok=True)
+        plt.savefig(default_path, dpi=300, bbox_inches='tight')
+        print(f"   📈 Equity curve saved: {default_path}")
+        plt.close()
+        return default_path
 
 def plot_drawdown(equity_curve):
     """Plot portfolio drawdown."""

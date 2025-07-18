@@ -49,17 +49,24 @@ class MeanReversionStrategy(bt.Strategy):
         self.current_order_id = None
         self.deposit_before_trade = None
         
+        # Equity curve tracking for proper portfolio value history
+        self.equity_curve = []
+        self.equity_dates = []
+        
         # Set order lifetime based on timeframe
         timeframe = getattr(self.p, 'timeframe', '15m')
         order_lifetime_dict = getattr(self.p, 'order_lifetime_minutes', {
-            '5m': 360,    # 6 hours for 5-minute timeframe (doubled from 3 hours)
-            '15m': 720,   # 12 hours for 15-minute timeframe (doubled from 6 hours)
-            '1h': 2880,   # 2 days for 1-hour timeframe (doubled from 1 day)
+            '5m': 360,    # 6 hours for 5-minute timeframe
+            '15m': 720,   # 12 hours for 15-minute timeframe
+            '1h': 2880,   # 2 days for 1-hour timeframe
             'default': 720
         })
         self.order_lifetime_minutes = order_lifetime_dict.get(timeframe, order_lifetime_dict.get('default', 720))
 
     def next(self):
+        # Track portfolio value for equity curve (do this first)
+        self._track_portfolio_value()
+        
         # Skip if ATR is not available yet
         if len(self.atr) == 0 or self.atr[0] == 0:
             return
@@ -495,3 +502,26 @@ class MeanReversionStrategy(bt.Strategy):
         else:
             # Standard broker - use normal getvalue
             return self.broker.getvalue()
+
+    def _track_portfolio_value(self):
+        """Track portfolio value for equity curve calculation"""
+        current_date = self.datas[0].datetime.datetime(0)
+        
+        # Calculate current portfolio value
+        if hasattr(self.broker, 'get_actual_cash'):
+            # For leveraged broker, use actual cash + unrealized P&L
+            actual_cash = self.broker.get_actual_cash()
+            # Calculate unrealized P&L from open positions
+            unrealized_pnl = 0.0
+            position = self.broker.getposition(self.datas[0])
+            if position.size != 0:
+                current_price = self.dataclose[0]
+                unrealized_pnl = position.size * (current_price - position.price)
+            portfolio_value = actual_cash + unrealized_pnl
+        else:
+            # Standard broker
+            portfolio_value = self.broker.getvalue()
+        
+        # Store portfolio value and date
+        self.equity_curve.append(portfolio_value)
+        self.equity_dates.append(current_date)

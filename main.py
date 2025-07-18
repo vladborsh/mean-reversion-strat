@@ -19,7 +19,7 @@ from src.visualization import (
     save_order_plots
 )
 
-def generate_visualizations(df, bb, vwap_dict, equity_curve, order_log):
+def generate_visualizations(df, bb, vwap_dict, equity_curve, equity_dates, order_log):
     """Generate and save all strategy visualizations with minimal console output"""
     try:
         print("📊 Generating visualizations...")
@@ -30,9 +30,18 @@ def generate_visualizations(df, bb, vwap_dict, equity_curve, order_log):
         plot_vwap = {k: v.tail(500) if hasattr(v, 'tail') else v for k, v in vwap_dict.items()}
         
         # Generate main plots
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        plots_dir = os.path.join(os.path.dirname(__file__), 'plots')
+        
+        # Save equity curve plot
+        if equity_curve and len(equity_curve) > 1:
+            equity_path = os.path.join(plots_dir, f'equity_curve_{timestamp}.png')
+            plot_equity_curve(equity_curve, equity_dates, save_path=equity_path)
+        else:
+            print("⚠️  No equity curve data available for plotting")
+        
         # plot_price_with_indicators(plot_data, plot_bb, plot_vwap)
-        # plot_equity_curve(equity_curve)
-        # plot_drawdown(equity_curve)
         
         # Process and save order plots
         if order_log:
@@ -112,7 +121,7 @@ def run_strategy(df, config_class=None, timeframe='15m'):
     leverage = risk_config.get('leverage', 100.0)  # Default 100:1 leverage for forex
     
     print("🔄 Running backtest...")
-    equity_curve, trade_log, order_log = run_backtest(df, MeanReversionStrategy, params, leverage=leverage)
+    equity_curve, equity_dates, trade_log, order_log = run_backtest(df, MeanReversionStrategy, params, leverage=leverage)
 
     # Metrics
     metrics = calculate_metrics(trade_log, equity_curve)
@@ -135,7 +144,7 @@ def run_strategy(df, config_class=None, timeframe='15m'):
     print(f"Total Trades: {len([t for t in trade_log if t.get('type') == 'exit'])}")
     
     # Generate visualizations
-    generate_visualizations(df, bb, vwap_dict, equity_curve, order_log)
+    generate_visualizations(df, bb, vwap_dict, equity_curve, equity_dates, order_log)
     
     return equity_curve, trade_log, metrics
 

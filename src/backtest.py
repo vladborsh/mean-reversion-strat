@@ -2,26 +2,8 @@ import backtrader as bt
 import pandas as pd
 from .strategy import MeanReversionStrategy
 
-class PortfolioValueObserver(bt.Observer):
-    """Observer to track actual portfolio value over time (not leveraged virtual cash)"""
-    lines = ('value',)
-
-    def next(self):
-        # Use actual cash if it's a leveraged broker, otherwise use regular getvalue()
-        broker = self._owner.broker
-        if hasattr(broker, 'get_actual_cash'):
-            # For leveraged broker, track actual cash + unrealized P&L
-            actual_cash = broker.get_actual_cash()
-            # Get unrealized P&L from open positions
-            unrealized_pnl = 0.0
-            for data in self._owner.datas:
-                position = broker.getposition(data)
-                if position.size != 0:
-                    current_price = data.close[0]
-                    unrealized_pnl += position.size * (current_price - position.price)
-            self.lines.value[0] = actual_cash + unrealized_pnl
-        else:
-            self.lines.value[0] = broker.getvalue()
+# Removed PortfolioValueObserver as it doesn't work reliably
+# Portfolio value tracking is now handled directly in the strategy
 
 class LeveragedBroker(bt.brokers.BackBroker):
     """
@@ -127,32 +109,25 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
     print(f"Actual account balance: ${actual_cash:,.0f}")
     print(f"Virtual buying power: ${actual_cash * leverage:,.0f}")
     
-    # Add analyzers and observers
+    # Add analyzers (no portfolio observer since it doesn't work reliably)
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
     cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
-    cerebro.addobserver(PortfolioValueObserver)
     
     try:
         results = cerebro.run()
         strat = results[0]
         
-        # Get portfolio value history from the observer
-        equity_curve = []
-        if hasattr(strat, 'observers') and hasattr(strat.observers, 'portfoliovalue'):
-            equity_curve = list(strat.observers.portfoliovalue.lines.value.array)
-        elif hasattr(strat, '_observers'):
-            for obs in strat._observers:
-                if hasattr(obs, 'lines') and hasattr(obs.lines, 'value'):
-                    equity_curve = list(obs.lines.value.array)
-                    break
+        # Get portfolio value history directly from the strategy
+        equity_curve = getattr(strat, 'equity_curve', [])
+        equity_dates = getattr(strat, 'equity_dates', [])
         
-        # Fallback if observer data is not available
+        # If no equity curve was tracked by strategy, calculate it from order history
         if not equity_curve:
-            initial_value = actual_cash  # Use actual cash, not leveraged amount
-            # Calculate final value using actual cash + unrealized P&L
+            print("No equity curve found in strategy, calculating from broker state...")
+            # Calculate portfolio value based on actual cash + unrealized P&L
             broker = cerebro.broker
             if hasattr(broker, 'get_actual_cash'):
-                final_actual_cash = broker.get_actual_cash()
+                actual_cash = broker.get_actual_cash()
                 # Calculate unrealized P&L from open positions
                 unrealized_pnl = 0.0
                 for data_feed in cerebro.datas:
@@ -160,11 +135,19 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
                     if position.size != 0:
                         current_price = data_feed.close[0]
                         unrealized_pnl += position.size * (current_price - position.price)
-                final_value = final_actual_cash + unrealized_pnl
+                final_value = actual_cash + unrealized_pnl
+                equity_curve = [actual_cash, final_value]  # Start with initial, end with final
+                equity_dates = []  # No dates available in fallback mode
+                print(f"Calculated equity curve: start=${actual_cash:.2f}, end=${final_value:.2f}")
             else:
+                # Fallback for standard broker
+                initial_value = actual_cash
                 final_value = broker.getvalue()
-            equity_curve = [initial_value, final_value]
-            print(f"Using fallback equity curve: [{initial_value}, {final_value}]")
+                equity_curve = [initial_value, final_value]
+                equity_dates = []  # No dates available in fallback mode
+                print(f"Using standard broker fallback: start=${initial_value:.2f}, end=${final_value:.2f}")
+        else:
+            print(f"Found equity curve with {len(equity_curve)} data points and {len(equity_dates)} dates")
         
         trade_log = getattr(strat, 'trade_log', [])
         order_log = strat.get_order_log() if hasattr(strat, 'get_order_log') else getattr(strat, 'order_log', [])
@@ -194,10 +177,10 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
         else:
             print("No orders found during backtest period.")
         
-        return equity_curve, trade_log, order_log
+        return equity_curve, equity_dates, trade_log, order_log
     except Exception as e:
         print(f"Backtest error: {e}")
         import traceback
         traceback.print_exc()
         # Return empty results to allow the script to continue
-        return [100000], [], []
+        return [100000], [], [], []
