@@ -21,8 +21,11 @@ This document provides a comprehensive guide to the hyperparameter optimization 
 # Quick test (4-16 parameter combinations)
 python optimize_strategy.py --quick-test
 
-# Focused optimization (~100-500 combinations)
+# Focused optimization (~100-500 combinations, maximizing PnL)
 python optimize_strategy.py --grid-search focused
+
+# Balanced optimization (balance between PnL and drawdown)
+python optimize_strategy.py --grid-search balanced --sort-objective balanced
 
 # Risk management optimization
 python optimize_strategy.py --grid-search risk
@@ -32,6 +35,9 @@ python optimize_strategy.py --random-search 100
 
 # Different symbols and timeframes
 python optimize_strategy.py --grid-search focused --symbol GBPUSD=X --timeframe 1h
+
+# Use specific optimization objective
+python optimize_strategy.py --grid-search focused --sort-objective max_sharpe
 ```
 
 ### 2. Python API Usage
@@ -74,7 +80,8 @@ python examples/optimization_examples.py
 | Configuration | Purpose | Combinations | Runtime |
 |---------------|---------|--------------|---------|
 | `quick` | Fast testing | 4-16 | Minutes |
-| `focused` | Key parameters | 100-500 | Hours |
+| `focused` | Key parameters (maximize PnL) | 100-500 | Hours |
+| `balanced` | Balance PnL and drawdown | 100-400 | Hours |
 | `comprehensive` | Thorough search | 1000+ | Days |
 | `risk` | Risk management | 100-500 | Hours |
 | `indicators` | Technical indicators | 500+ | Hours |
@@ -391,3 +398,42 @@ For more examples and detailed usage, see:
 - `examples/optimization_examples.py` - Interactive examples
 - `src/optimization_configs.py` - All available configurations
 - `src/hyperparameter_optimizer.py` - Core optimization code
+
+## Optimization Grid Comparison
+
+### Focused vs. Balanced Grid Search
+
+The two most commonly used optimization grids serve different purposes:
+
+#### Focused Grid Search
+- **Primary Goal**: Maximize final PnL
+- **Parameter Range**: Broader risk parameters
+- **Risk Settings**: More aggressive
+- **Best For**: Traders seeking maximum returns who can tolerate higher drawdowns
+- **Parameter Focus**:
+  - Wider range of risk percentages (1.0% - 2.0%)
+  - Moderate stop loss settings
+  - Various risk/reward ratios
+
+#### Balanced Grid Search
+- **Primary Goal**: Balance between PnL and drawdown
+- **Parameter Range**: More conservative risk parameters
+- **Risk Settings**: Tighter risk controls
+- **Best For**: Traders seeking stable, consistent returns with lower drawdowns
+- **Parameter Focus**:
+  - Lower risk percentages (0.5% - 1.25%)
+  - Tighter stop loss settings
+  - More stringent market regime filtering
+  - Requires reversal confirmation by default
+
+### Key Differences
+
+| Aspect | Focused Grid | Balanced Grid |
+|--------|--------------|--------------|
+| Risk per position | 1.0% - 2.0% | 0.5% - 1.25% |
+| Stop loss ATR multiplier | 1.0 - 1.5 | 0.8 - 1.5 |
+| Reversal confirmation | Optional | Required |
+| Regime filtering | Moderate | Stricter |
+| BB standard deviation | 2.0 - 2.5 | 2.0 - 3.0 |
+
+The balanced grid, when used with the `balanced` optimization objective, produces strategies that maintain good profitability while significantly reducing drawdowns compared to the standard focused optimization.

@@ -111,6 +111,32 @@ class OptimizationConfigs:
             'stop_loss_atr_multiplier': (0.5, 3.0),
             'risk_reward_ratio': (1.5, 5.0),
         }
+    
+    @staticmethod
+    def get_balanced_pnl_drawdown_grid() -> Dict[str, List]:
+        """Grid optimized for balancing PnL and drawdown"""
+        return {
+            # Technical indicators - moderate settings
+            'bb_window': [20, 25, 30],
+            'bb_std': [2.0, 2.5, 3.0],
+            'vwap_window': [20, 25, 30],
+            'vwap_std': [2.0, 2.5],
+            
+            # Risk management - critical for drawdown control
+            'risk_per_position_pct': [0.5, 0.75, 1.0, 1.25],  # Lower risk values to reduce drawdown
+            'stop_loss_atr_multiplier': [0.8, 1.0, 1.2, 1.5],  # Tighter stops to minimize drawdown
+            'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5],  # Balanced risk/reward
+            
+            # Strategy behavior for smoother equity curve
+            'require_reversal': [True],  # Require confirmation to reduce false signals
+            
+            # Market regime filtering to avoid unfavorable conditions
+            'regime_min_score': [60, 70, 80],  # Higher filtering to avoid drawdowns
+            
+            # ATR period
+            'atr_period': [10, 14, 20],
+        }
+    
 
 
 class OptimizationObjectives:
@@ -151,6 +177,17 @@ class OptimizationObjectives:
         if result.win_rate == 0:
             return 0
         return result.win_rate * result.final_pnl / max(result.total_trades, 1)
+    
+    @staticmethod
+    def balanced_pnl_drawdown(result) -> float:
+        """Maximize PnL while minimizing drawdown - balanced approach"""
+        if result.max_drawdown == 0:
+            return result.final_pnl
+        
+        # Scale PnL by inverse of drawdown (higher drawdown = lower score)
+        # This creates a balance between maximizing PnL and minimizing drawdown
+        drawdown_factor = 1 / (result.max_drawdown / 100)  # Convert percentage to decimal
+        return result.final_pnl * drawdown_factor
 
 
 class MarketConditionConfigs:
@@ -287,6 +324,7 @@ OPTIMIZATION_CONFIGS = {
     'risk': OptimizationConfigs.get_risk_management_grid,
     'indicators': OptimizationConfigs.get_indicator_grid,
     'regime': OptimizationConfigs.get_market_regime_grid,
+    'balanced': OptimizationConfigs.get_balanced_pnl_drawdown_grid,
     
     # Market condition specific
     'trending': MarketConditionConfigs.get_trending_market_config,
@@ -310,4 +348,5 @@ OPTIMIZATION_OBJECTIVES = {
     'min_drawdown': OptimizationObjectives.min_drawdown,
     'risk_adjusted': OptimizationObjectives.risk_adjusted_return,
     'profit_factor': OptimizationObjectives.profit_factor,
+    'balanced': OptimizationObjectives.balanced_pnl_drawdown,
 }

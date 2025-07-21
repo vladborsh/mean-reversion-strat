@@ -24,9 +24,10 @@ from src.hyperparameter_optimizer import HyperparameterOptimizer, ParameterGrid
 from src.optimization_configs import OPTIMIZATION_CONFIGS, RANDOM_SEARCH_RANGES
 
 
-def run_grid_search(optimizer, grid_type='focused'):
+def run_grid_search(optimizer, grid_type='focused', sort_objective='balanced'):
     """Run grid search optimization"""
     print(f"🔍 Running grid search optimization: {grid_type}")
+    print(f"🎯 Optimization objective: {sort_objective}")
     
     if grid_type in OPTIMIZATION_CONFIGS:
         param_grid = OPTIMIZATION_CONFIGS[grid_type]()
@@ -43,15 +44,17 @@ def run_grid_search(optimizer, grid_type='focused'):
     
     results = optimizer.grid_search(
         param_grid=param_grid,
-        optimization_name=f"grid_search_{grid_type}"
+        optimization_name=f"grid_search_{grid_type}",
+        sort_objective=sort_objective
     )
     
     return results
 
 
-def run_random_search(optimizer, n_iterations=100):
+def run_random_search(optimizer, n_iterations=100, sort_objective='balanced'):
     """Run random search optimization"""
     print(f"🎲 Running random search optimization: {n_iterations} iterations")
+    print(f"🎯 Optimization objective: {sort_objective}")
     
     # Use the predefined parameter ranges
     param_ranges = RANDOM_SEARCH_RANGES
@@ -59,21 +62,30 @@ def run_random_search(optimizer, n_iterations=100):
     results = optimizer.random_search(
         param_ranges=param_ranges,
         n_iterations=n_iterations,
-        optimization_name=f"random_search_{n_iterations}"
+        optimization_name=f"random_search_{n_iterations}",
+        sort_objective=sort_objective
     )
     
     return results
 
 
-def run_quick_test(optimizer):
+def run_quick_test(optimizer, sort_objective='balanced'):
     """Run a quick test with a small parameter grid"""
     print("⚡ Running quick test optimization")
+    print(f"🎯 Optimization objective: {sort_objective}")
     
-    param_grid = OPTIMIZATION_CONFIGS['quick']()
+    # Use the balanced grid for quick tests when using balanced objective
+    if sort_objective == 'balanced':
+        param_grid = OPTIMIZATION_CONFIGS['balanced']()
+        # Use a subset to make it quicker
+        param_grid = {k: v[:2] for k, v in param_grid.items()}
+    else:
+        param_grid = OPTIMIZATION_CONFIGS['quick']()
     
     results = optimizer.grid_search(
         param_grid=param_grid,
-        optimization_name="quick_test"
+        optimization_name="quick_test",
+        sort_objective=sort_objective
     )
     
     return results
@@ -87,7 +99,8 @@ def main():
 Examples:
   python optimize_strategy.py --quick-test
   python optimize_strategy.py --grid-search focused --plot-equity-curves --plot-orders
-  python optimize_strategy.py --random-search 50 --quiet
+  python optimize_strategy.py --grid-search balanced --sort-objective balanced --plot-equity-curves
+  python optimize_strategy.py --random-search 50 --sort-objective balanced --quiet
   python optimize_strategy.py --symbol GBPUSD=X --timeframe 1h --plot-equity-curves --plot-orders
         """
     )
@@ -98,7 +111,7 @@ Examples:
                           help='Run quick test with small parameter grid')
     opt_group.add_argument('--grid-search', 
                           choices=['focused', 'comprehensive', 'risk', 'indicators', 'regime', 
-                                 'trending', 'ranging', 'high_vol', 'low_vol', 'scalping', 'swing'],
+                                 'trending', 'ranging', 'high_vol', 'low_vol', 'scalping', 'swing', 'balanced'],
                           help='Run grid search optimization with specified configuration')
     opt_group.add_argument('--random-search', type=int, metavar='N',
                           help='Run random search with N iterations')
@@ -112,6 +125,12 @@ Examples:
                        help='Data timeframe (default: 15m)')
     parser.add_argument('--years', type=int, default=2,
                        help='Years of historical data (default: 2)')
+    
+    # Optimization parameters
+    parser.add_argument('--sort-objective', default='balanced',
+                       choices=['max_pnl', 'max_sharpe', 'max_winrate', 
+                               'min_drawdown', 'risk_adjusted', 'profit_factor', 'balanced'],
+                       help='Optimization objective to sort results (default: balanced)')
     
     # Output directory
     parser.add_argument('--output-dir', default=None,
@@ -143,11 +162,11 @@ Examples:
     # Run optimization based on arguments
     try:
         if args.quick_test:
-            results = run_quick_test(optimizer)
+            results = run_quick_test(optimizer, args.sort_objective)
         elif args.grid_search:
-            results = run_grid_search(optimizer, args.grid_search)
+            results = run_grid_search(optimizer, args.grid_search, args.sort_objective)
         elif args.random_search:
-            results = run_random_search(optimizer, args.random_search)
+            results = run_random_search(optimizer, args.random_search, args.sort_objective)
         
         # Print final summary
         if results:

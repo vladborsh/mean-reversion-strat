@@ -360,7 +360,8 @@ Completed: {completed}/{total} ({progress_pct:.1f}%)
 Elapsed Time: {elapsed_time/60:.1f} minutes
 Estimated Completion: {estimated_completion}
 Current Best PnL: ${max([r.final_pnl for r in self.results]) if self.results else 0:,.2f}
-Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_trades}, WinRate={current_result.win_rate:.1f}%
+Current Best PnL/Drawdown Ratio: {max([r.final_pnl/(r.max_drawdown+0.01) for r in self.results]) if self.results else 0:,.2f}
+Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdown:.1f}%, PnL/DD={(current_result.final_pnl/(current_result.max_drawdown+0.01)):.2f}, Trades={current_result.total_trades}
 """
             
             with open(self.progress_file_path, 'w') as f:
@@ -534,7 +535,8 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
         self,
         param_grid: Dict[str, List],
         optimization_name: str = "grid_search",
-        max_workers: Optional[int] = None
+        max_workers: Optional[int] = None,
+        sort_objective: str = "balanced"
     ) -> List[OptimizationResult]:
         """
         Perform grid search optimization
@@ -543,10 +545,14 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
             param_grid: Dictionary of parameter names and value lists
             optimization_name: Name for this optimization run
             max_workers: Number of parallel workers (None for sequential)
+            sort_objective: Sorting objective from OPTIMIZATION_OBJECTIVES
         
         Returns:
-            List of optimization results sorted by final PnL
+            List of optimization results sorted by selected objective
         """
+        # Import objectives
+        from src.optimization_configs import OPTIMIZATION_OBJECTIVES
+        
         print("="*80)
         print(f"🔍 STARTING GRID SEARCH OPTIMIZATION: {optimization_name}")
         print("="*80)
@@ -566,6 +572,7 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
         for key, value_list in param_grid.items():
             print(f"  {key}: {value_list}")
         print(f"🔢 Total combinations to test: {total_combinations:,}")
+        print(f"🎯 Optimization objective: {sort_objective}")
         
         self.start_time = time.time()
         self.results = []
@@ -579,8 +586,11 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
             print("🔄 Running sequential optimization...")
             self._run_sequential_optimization(param_combinations, keys)
         
-        # Sort results by final PnL (descending)
-        self.results.sort(key=lambda x: x.final_pnl, reverse=True)
+        # Get the sorting function from objectives
+        sort_function = OPTIMIZATION_OBJECTIVES.get(sort_objective, OPTIMIZATION_OBJECTIVES['balanced'])
+        
+        # Sort results by the selected objective (descending)
+        self.results.sort(key=sort_function, reverse=True)
         
         # Save best results
         self._save_best_results()
@@ -674,6 +684,11 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
                 print(f"  📊 Sharpe Ratio: {result.sharpe_ratio:.2f}")
                 print(f"  🎯 Win Rate: {result.win_rate:.1f}%")
                 print(f"  📉 Max Drawdown: {result.max_drawdown:.1f}%")
+                
+                # Calculate the PnL-to-Drawdown ratio (for balanced optimization)
+                pnl_drawdown_ratio = result.final_pnl / (result.max_drawdown + 0.01)  # Add small value to avoid div by zero
+                print(f"  🏆 PnL/Drawdown Ratio: {pnl_drawdown_ratio:.2f}")
+                
                 print(f"  🔢 Total Trades: {result.total_trades}")
                 print(f"  ⚙️  Parameters: {result.parameters}")
         
@@ -687,7 +702,8 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
         self,
         param_ranges: Dict[str, Union[List, Tuple]],
         n_iterations: int,
-        optimization_name: str = "random_search"
+        optimization_name: str = "random_search",
+        sort_objective: str = "balanced"
     ) -> List[OptimizationResult]:
         """
         Perform random search optimization
@@ -696,10 +712,14 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
             param_ranges: Dictionary of parameter names and ranges/choices
             n_iterations: Number of random combinations to test
             optimization_name: Name for this optimization run
+            sort_objective: Sorting objective from OPTIMIZATION_OBJECTIVES
         
         Returns:
-            List of optimization results sorted by final PnL
+            List of optimization results sorted by selected objective
         """
+        # Import objectives
+        from src.optimization_configs import OPTIMIZATION_OBJECTIVES
+        
         print("="*80)
         print(f"🎲 STARTING RANDOM SEARCH OPTIMIZATION: {optimization_name}")
         print("="*80)
@@ -711,6 +731,7 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
         self._setup_result_files(optimization_name)
         
         print(f"🔢 Running {n_iterations:,} random parameter combinations")
+        print(f"🎯 Optimization objective: {sort_objective}")
         
         self.start_time = time.time()
         self.results = []
@@ -732,8 +753,11 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, Trades={current_result.total_
             
             print(f"   💰 PnL: ${result.final_pnl:,.2f} | Trades: {result.total_trades} | WinRate: {result.win_rate:.1f}% | Sharpe: {result.sharpe_ratio:.2f}")
         
-        # Sort results by final PnL (descending)
-        self.results.sort(key=lambda x: x.final_pnl, reverse=True)
+        # Get the sorting function from objectives
+        sort_function = OPTIMIZATION_OBJECTIVES.get(sort_objective, OPTIMIZATION_OBJECTIVES['balanced'])
+        
+        # Sort results by the selected objective (descending)
+        self.results.sort(key=sort_function, reverse=True)
         
         # Save best results
         self._save_best_results()
