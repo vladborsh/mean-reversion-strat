@@ -3,11 +3,21 @@ import pandas as pd
 from .indicators import Indicators
 from .risk_management import RiskManager, ATRIndicator, create_risk_manager
 from .strategy_config import DEFAULT_CONFIG
+from .market_regime import MarketRegimeFilter
 
 class MeanReversionStrategy(bt.Strategy):
-    # Get default params and extend with timeframe
+    # Get default params and extend with timeframe and risk management
     base_params = DEFAULT_CONFIG.get_backtrader_params()
     base_params['timeframe'] = '15m'  # Default timeframe
+    
+    # Add risk management parameters with defaults
+    risk_config = DEFAULT_CONFIG.get_risk_config()
+    base_params['risk_per_position_pct'] = risk_config['risk_per_position_pct']
+    base_params['stop_loss_atr_multiplier'] = risk_config['stop_loss_atr_multiplier']
+    base_params['risk_reward_ratio'] = risk_config['risk_reward_ratio']
+    
+    # Add verbose parameter (default True for backward compatibility)
+    base_params['verbose'] = True
     
     # Convert to backtrader params format
     params = tuple(base_params.items())
@@ -24,8 +34,18 @@ class MeanReversionStrategy(bt.Strategy):
         self.order_entry_time = None
         self.order_lifetime_minutes = None
         
-        # Initialize risk manager
-        self.risk_manager = create_risk_manager(DEFAULT_CONFIG.get_risk_config())
+        # Initialize risk manager with strategy parameters if available, otherwise use defaults
+        risk_config = DEFAULT_CONFIG.get_risk_config()
+        
+        # Override with strategy parameters if provided
+        if hasattr(self.p, 'risk_per_position_pct'):
+            risk_config['risk_per_position_pct'] = self.p.risk_per_position_pct
+        if hasattr(self.p, 'stop_loss_atr_multiplier'):
+            risk_config['stop_loss_atr_multiplier'] = self.p.stop_loss_atr_multiplier
+        if hasattr(self.p, 'risk_reward_ratio'):
+            risk_config['risk_reward_ratio'] = self.p.risk_reward_ratio
+        
+        self.risk_manager = create_risk_manager(risk_config)
         
         # Technical indicators
         self.bb_ma = bt.indicators.SimpleMovingAverage(self.datas[0], period=self.p.bb_window)
@@ -40,6 +60,17 @@ class MeanReversionStrategy(bt.Strategy):
         
         # ATR indicator for risk management
         self.atr = ATRIndicator(self.datas[0], period=self.p.atr_period)
+        
+        # Market regime detection filter
+        if getattr(self.p, 'regime_enabled', True):
+            self.regime_filter = MarketRegimeFilter(
+                adx_period=getattr(self.p, 'regime_adx_period', 14),
+                volatility_period=getattr(self.p, 'regime_volatility_period', 14),
+                volatility_lookback=getattr(self.p, 'regime_volatility_lookback', 100),
+                min_score_threshold=getattr(self.p, 'regime_min_score', 60)
+            )
+        else:
+            self.regime_filter = None
         
         # Risk management variables
         self.stop_price = None
@@ -78,7 +109,8 @@ class MeanReversionStrategy(bt.Strategy):
             minutes_elapsed = time_elapsed.total_seconds() / 60
             
             if minutes_elapsed >= self.order_lifetime_minutes:
-                print(f"FORCE CLOSING position after {minutes_elapsed:.1f} minutes (lifetime: {self.order_lifetime_minutes} minutes)")
+                if getattr(self.p, 'verbose', True):
+                    print(f"FORCE CLOSING position after {minutes_elapsed:.1f} minutes (lifetime: {self.order_lifetime_minutes} minutes)")
                 self.close()
                 self._record_trade_outcome('lifetime_expired', self.dataclose[0])  # Only for lifetime expiry use market price
                 return
@@ -95,78 +127,107 @@ class MeanReversionStrategy(bt.Strategy):
                                         self.dataclose[0] > self.dataclose[-1])
                 
                 if reversal_confirmed:
-                    # Calculate risk management levels
-                    entry_price = self.dataclose[0]
-                    stop_loss = self.risk_manager.calculate_atr_stop_loss(
-                        entry_price, self.atr[0], 'long'
-                    )
-                    take_profit = self.risk_manager.calculate_take_profit(
-                        entry_price, stop_loss, 'long'
-                    )
+                    # Check market regime conditions if filter is enabled
+                    regime_suitable = True
+                    regime_reason = "No regime filter"
                     
-                    # Validate trade before execution
-                    is_valid, reason = self.risk_manager.validate_trade(
-                        entry_price, stop_loss, take_profit, 'long'
-                    )
+                    if self.regime_filter is not None:
+                        # Check if we have enough data for regime analysis
+                        if (len(self.regime_filter.is_suitable) > 0 and
+                            len(self.regime_filter.regime_score) > 0):
+                            
+                            regime_suitable = bool(self.regime_filter.is_suitable[0])
+                            regime_info = self.regime_filter.get_regime_info()
+                            regime_reason = regime_info.get('reason', 'Unknown regime')
+
+                        else:
+                            # Not enough data for regime analysis, be conservative
+                            regime_suitable = False
+                            regime_reason = "Insufficient data for regime analysis"
                     
-                    if is_valid:
-                        # Calculate position size based on risk
-                        account_value = self.get_account_value_for_risk_management()
-                        position_size = self.risk_manager.calculate_position_size(
-                            account_value, entry_price, stop_loss
+                    if regime_suitable:
+                        # Calculate risk management levels
+                        entry_price = self.dataclose[0]
+                        stop_loss = self.risk_manager.calculate_atr_stop_loss(
+                            entry_price, self.atr[0], 'long'
+                        )
+                        take_profit = self.risk_manager.calculate_take_profit(
+                            entry_price, stop_loss, 'long'
                         )
                         
-                        # Store deposit before trade for outcome tracking
-                        self.deposit_before_trade = account_value
-                        
-                        # Execute market order immediately
-                        self.order = self.buy(size=position_size, exectype=bt.Order.Market)
-                        self.stop_price = stop_loss
-                        self.take_profit_price = take_profit
-                        
-                        # Set position entry time immediately since market orders execute right away
-                        self.order_entry_time = self.datas[0].datetime.datetime(0)
-                        
-                        # Get risk metrics for logging
-                        risk_metrics = self.risk_manager.get_risk_metrics(
+                        # Validate trade before execution
+                        is_valid, reason = self.risk_manager.validate_trade(
                             entry_price, stop_loss, take_profit, 'long'
                         )
                         
-                        # Create unique order ID
-                        order_id = f"BUY_{self.datas[0].datetime.date(0).isoformat()}_{self.datas[0].datetime.time(0).isoformat().replace(':', '')}"
-                        self.current_order_id = order_id
-                        
-                        # Log the complete order information
-                        order_info = {
-                            'order_id': order_id,
-                            'date': self.datas[0].datetime.date(0).isoformat(),
-                            'time': self.datas[0].datetime.time(0).isoformat(),
-                            'type': 'BUY',
-                            'entry_price': entry_price,
-                            'stop_loss': stop_loss,
-                            'take_profit': take_profit,
-                            'position_size': position_size,
-                            'atr_value': self.atr[0],
-                            'risk_amount': risk_metrics['risk_amount'],
-                            'reward_amount': risk_metrics['reward_amount'],
-                            'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
-                            'account_risk_pct': risk_metrics['risk_percentage'],
-                            'deposit_before_trade': account_value,
-                            'reason': 'Break below BB/VWAP lower bands with reversal'
-                        }
-                        self.order_log.append(order_info)
-                        
-                        print(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
-                              f"{order_info['type']} {position_size} units at {entry_price:.4f}, "
-                              f"SL: {stop_loss:.4f} ({self.risk_manager.stop_loss_atr_multiplier}*ATR), "
-                              f"TP: {take_profit:.4f} (RR: 1:{risk_metrics['risk_reward_ratio']:.1f}), "
-                              f"Risk: {risk_metrics['risk_percentage']:.1f}%")
-                        
-                        self.trade_log.append({
-                            'type': 'buy', 
-                            'price': entry_price, 
-                            'reason': 'Break below BB/VWAP lower'
-                        })
+                        if is_valid:
+                            # Calculate position size based on risk
+                            account_value = self.get_account_value_for_risk_management()
+                            position_size = self.risk_manager.calculate_position_size(
+                                account_value, entry_price, stop_loss
+                            )
+                            
+                            # Store deposit before trade for outcome tracking
+                            self.deposit_before_trade = account_value
+                            
+                            # Execute market order immediately
+                            self.order = self.buy(size=position_size, exectype=bt.Order.Market)
+                            self.stop_price = stop_loss
+                            self.take_profit_price = take_profit
+                            
+                            # Set position entry time immediately since market orders execute right away
+                            self.order_entry_time = self.datas[0].datetime.datetime(0)
+                            
+                            # Get risk metrics for logging
+                            risk_metrics = self.risk_manager.get_risk_metrics(
+                                entry_price, stop_loss, take_profit, 'long'
+                            )
+                            
+                            # Create unique order ID
+                            order_id = f"BUY_{self.datas[0].datetime.date(0).isoformat()}_{self.datas[0].datetime.time(0).isoformat().replace(':', '')}"
+                            self.current_order_id = order_id
+                            
+                            # Get regime info for logging
+                            regime_info = self.regime_filter.get_regime_info() if self.regime_filter else {}
+                            
+                            # Log the complete order information including regime data
+                            order_info = {
+                                'order_id': order_id,
+                                'date': self.datas[0].datetime.date(0).isoformat(),
+                                'time': self.datas[0].datetime.time(0).isoformat(),
+                                'type': 'BUY',
+                                'entry_price': entry_price,
+                                'stop_loss': stop_loss,
+                                'take_profit': take_profit,
+                                'position_size': position_size,
+                                'atr_value': self.atr[0],
+                                'risk_amount': risk_metrics['risk_amount'],
+                                'reward_amount': risk_metrics['reward_amount'],
+                                'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
+                                'account_risk_pct': risk_metrics['risk_percentage'],
+                                'deposit_before_trade': account_value,
+                                'reason': f'Break below BB/VWAP lower bands with reversal - {regime_reason}',
+                                # Market regime information
+                                'regime_score': regime_info.get('score', 0),
+                                'regime_adx': regime_info.get('adx', 0),
+                                'regime_volatility_percentile': regime_info.get('volatility_percentile', 0),
+                                'regime_classification': regime_info.get('regime', 'unknown')
+                            }
+                            self.order_log.append(order_info)
+                            
+                            if getattr(self.p, 'verbose', True):
+                                print(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
+                                      f"{order_info['type']} {position_size} units at {entry_price:.4f}, "
+                                      f"SL: {stop_loss:.4f} ({self.risk_manager.stop_loss_atr_multiplier}*ATR), "
+                                      f"TP: {take_profit:.4f} (RR: 1:{risk_metrics['risk_reward_ratio']:.1f}), "
+                                      f"Risk: {risk_metrics['risk_percentage']:.1f}% | Regime: {regime_info.get('regime', 'N/A')} "
+                                      f"(Score: {regime_info.get('score', 0):.0f}, ADX: {regime_info.get('adx', 0):.1f})")
+                            
+                            self.trade_log.append({
+                                'type': 'buy', 
+                                'price': entry_price, 
+                                'reason': 'Break below BB/VWAP lower'
+                            })
             
             # Short signal - Sell when price breaks above both bands and shows reversal
             elif (self.dataclose[0] > self.bb_upper[0] and 
@@ -179,78 +240,107 @@ class MeanReversionStrategy(bt.Strategy):
                                         self.dataclose[0] < self.dataclose[-1])
                 
                 if reversal_confirmed:
-                    # Calculate risk management levels
-                    entry_price = self.dataclose[0]
-                    stop_loss = self.risk_manager.calculate_atr_stop_loss(
-                        entry_price, self.atr[0], 'short'
-                    )
-                    take_profit = self.risk_manager.calculate_take_profit(
-                        entry_price, stop_loss, 'short'
-                    )
+                    # Check market regime conditions if filter is enabled
+                    regime_suitable = True
+                    regime_reason = "No regime filter"
                     
-                    # Validate trade before execution
-                    is_valid, reason = self.risk_manager.validate_trade(
-                        entry_price, stop_loss, take_profit, 'short'
-                    )
-                    
-                    if is_valid:
-                        # Calculate position size based on risk
-                        account_value = self.get_account_value_for_risk_management()
-                        position_size = self.risk_manager.calculate_position_size(
-                            account_value, entry_price, stop_loss
+                    if self.regime_filter is not None:
+                        # Check if we have enough data for regime analysis
+                        if (len(self.regime_filter.is_suitable) > 0 and
+                            len(self.regime_filter.regime_score) > 0):
+                            
+                            regime_suitable = bool(self.regime_filter.is_suitable[0])
+                            regime_info = self.regime_filter.get_regime_info()
+                            regime_reason = regime_info.get('reason', 'Unknown regime')
+
+                        else:
+                            # Not enough data for regime analysis, be conservative
+                            regime_suitable = False
+                            regime_reason = "Insufficient data for regime analysis"
+
+                    if regime_suitable:
+                        # Calculate risk management levels
+                        entry_price = self.dataclose[0]
+                        stop_loss = self.risk_manager.calculate_atr_stop_loss(
+                            entry_price, self.atr[0], 'short'
+                        )
+                        take_profit = self.risk_manager.calculate_take_profit(
+                            entry_price, stop_loss, 'short'
                         )
                         
-                        # Store deposit before trade for outcome tracking
-                        self.deposit_before_trade = account_value
-                        
-                        # Execute market order immediately
-                        self.order = self.sell(size=position_size, exectype=bt.Order.Market)
-                        self.stop_price = stop_loss
-                        self.take_profit_price = take_profit
-                        
-                        # Set position entry time immediately since market orders execute right away
-                        self.order_entry_time = self.datas[0].datetime.datetime(0)
-                        
-                        # Get risk metrics for logging
-                        risk_metrics = self.risk_manager.get_risk_metrics(
+                        # Validate trade before execution
+                        is_valid, reason = self.risk_manager.validate_trade(
                             entry_price, stop_loss, take_profit, 'short'
                         )
                         
-                        # Create unique order ID
-                        order_id = f"SELL_{self.datas[0].datetime.date(0).isoformat()}_{self.datas[0].datetime.time(0).isoformat().replace(':', '')}"
-                        self.current_order_id = order_id
-                        
-                        # Log the complete order information
-                        order_info = {
-                            'order_id': order_id,
-                            'date': self.datas[0].datetime.date(0).isoformat(),
-                            'time': self.datas[0].datetime.time(0).isoformat(),
-                            'type': 'SELL',
-                            'entry_price': entry_price,
-                            'stop_loss': stop_loss,
-                            'take_profit': take_profit,
-                            'position_size': position_size,
-                            'atr_value': self.atr[0],
-                            'risk_amount': risk_metrics['risk_amount'],
-                            'reward_amount': risk_metrics['reward_amount'],
-                            'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
-                            'account_risk_pct': risk_metrics['risk_percentage'],
-                            'deposit_before_trade': account_value,
-                            'reason': 'Break above BB/VWAP upper bands with reversal'
-                        }
-                        self.order_log.append(order_info)
-                        
-                        print(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
-                              f"{order_info['type']} {position_size} units at {entry_price:.4f}, "
-                              f"SL: {stop_loss:.4f} ({self.risk_manager.stop_loss_atr_multiplier}*ATR), "
-                              f"TP: {take_profit:.4f} (RR: 1:{risk_metrics['risk_reward_ratio']:.1f}), "
-                              f"Risk: {risk_metrics['risk_percentage']:.1f}%")
-                        
-                        self.trade_log.append({
-                            'type': 'sell', 
-                            'price': entry_price, 
-                            'reason': 'Break above BB/VWAP upper'
-                        })
+                        if is_valid:
+                            # Calculate position size based on risk
+                            account_value = self.get_account_value_for_risk_management()
+                            position_size = self.risk_manager.calculate_position_size(
+                                account_value, entry_price, stop_loss
+                            )
+                            
+                            # Store deposit before trade for outcome tracking
+                            self.deposit_before_trade = account_value
+                            
+                            # Execute market order immediately
+                            self.order = self.sell(size=position_size, exectype=bt.Order.Market)
+                            self.stop_price = stop_loss
+                            self.take_profit_price = take_profit
+                            
+                            # Set position entry time immediately since market orders execute right away
+                            self.order_entry_time = self.datas[0].datetime.datetime(0)
+                            
+                            # Get risk metrics for logging
+                            risk_metrics = self.risk_manager.get_risk_metrics(
+                                entry_price, stop_loss, take_profit, 'short'
+                            )
+                            
+                            # Create unique order ID
+                            order_id = f"SELL_{self.datas[0].datetime.date(0).isoformat()}_{self.datas[0].datetime.time(0).isoformat().replace(':', '')}"
+                            self.current_order_id = order_id
+                            
+                            # Get regime info for logging
+                            regime_info = self.regime_filter.get_regime_info() if self.regime_filter else {}
+                            
+                            # Log the complete order information including regime data
+                            order_info = {
+                                'order_id': order_id,
+                                'date': self.datas[0].datetime.date(0).isoformat(),
+                                'time': self.datas[0].datetime.time(0).isoformat(),
+                                'type': 'SELL',
+                                'entry_price': entry_price,
+                                'stop_loss': stop_loss,
+                                'take_profit': take_profit,
+                                'position_size': position_size,
+                                'atr_value': self.atr[0],
+                                'risk_amount': risk_metrics['risk_amount'],
+                                'reward_amount': risk_metrics['reward_amount'],
+                                'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
+                                'account_risk_pct': risk_metrics['risk_percentage'],
+                                'deposit_before_trade': account_value,
+                                'reason': f'Break above BB/VWAP upper bands with reversal - {regime_reason}',
+                                # Market regime information
+                                'regime_score': regime_info.get('score', 0),
+                                'regime_adx': regime_info.get('adx', 0),
+                                'regime_volatility_percentile': regime_info.get('volatility_percentile', 0),
+                                'regime_classification': regime_info.get('regime', 'unknown')
+                            }
+                            self.order_log.append(order_info)
+                            
+                            if getattr(self.p, 'verbose', True):
+                                print(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
+                                      f"{order_info['type']} {position_size} units at {entry_price:.4f}, "
+                                      f"SL: {stop_loss:.4f} ({self.risk_manager.stop_loss_atr_multiplier}*ATR), "
+                                      f"TP: {take_profit:.4f} (RR: 1:{risk_metrics['risk_reward_ratio']:.1f}), "
+                                      f"Risk: {risk_metrics['risk_percentage']:.1f}% | Regime: {regime_info.get('regime', 'N/A')} "
+                                      f"(Score: {regime_info.get('score', 0):.0f}, ADX: {regime_info.get('adx', 0):.1f})")
+                            
+                            self.trade_log.append({
+                                'type': 'sell', 
+                                'price': entry_price, 
+                                'reason': 'Break above BB/VWAP upper'
+                            })
         else:
             # Position management - Exit on stop loss or take profit
             if self.position.size > 0:  # Long position
@@ -284,16 +374,18 @@ class MeanReversionStrategy(bt.Strategy):
         if order.status == order.Completed:
             # Market orders execute immediately, so we already set entry time when creating the order
             self.order = None
-            print(f"Market Order FILLED at {self.dataclose[0]:.4f} - Position active")
+            if getattr(self.p, 'verbose', True):
+                print(f"Market Order FILLED at {self.dataclose[0]:.4f} - Position active")
             
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             # Order was not filled (shouldn't happen with market orders, but handle edge cases)
-            if order.status == order.Canceled:
-                print(f"Order CANCELLED")
-            elif order.status == order.Rejected:
-                print(f"Order REJECTED")
-            elif order.status == order.Margin:
-                print(f"Order FAILED due to margin")
+            if getattr(self.p, 'verbose', True):
+                if order.status == order.Canceled:
+                    print(f"Order CANCELLED")
+                elif order.status == order.Rejected:
+                    print(f"Order REJECTED")
+                elif order.status == order.Margin:
+                    print(f"Order FAILED due to margin")
                 
             # Reset tracking variables
             self.order = None
@@ -341,9 +433,10 @@ class MeanReversionStrategy(bt.Strategy):
                         
                         calculated_pnl = price_diff * position_size
                         
-                        print(f"P&L Calculation: {order_type} {position_size} units, "
-                              f"Entry: {entry_price:.4f}, Exit: {exit_price:.4f}, "
-                              f"Diff: {price_diff:+.4f}, P&L: {calculated_pnl:+.4f}")
+                        if getattr(self.p, 'verbose', True):
+                            print(f"P&L Calculation: {order_type} {position_size} units, "
+                                  f"Entry: {entry_price:.4f}, Exit: {exit_price:.4f}, "
+                                  f"Diff: {price_diff:+.4f}, P&L: {calculated_pnl:+.4f}")
                         break
                     
             # Update broker's actual cash balance with calculated trade P&L
@@ -386,7 +479,8 @@ class MeanReversionStrategy(bt.Strategy):
         """Called when the strategy stops - ensure all positions are closed and orders have outcomes"""
         # Force close any remaining open position
         if self.position:
-            print(f"FORCE CLOSING remaining position at backtest end: {self.position.size} units")
+            if getattr(self.p, 'verbose', True):
+                print(f"FORCE CLOSING remaining position at backtest end: {self.position.size} units")
             self.close()
             # Record the forced closure
             self._record_trade_outcome('backtest_end_forced', self.dataclose[0])
@@ -396,7 +490,8 @@ class MeanReversionStrategy(bt.Strategy):
         orders_without_outcomes = [order for order in self.order_log if 'trade_outcome' not in order]
         
         if orders_without_outcomes:
-            print(f"FORCING OUTCOMES for {len(orders_without_outcomes)} incomplete orders at backtest end")
+            if getattr(self.p, 'verbose', True):
+                print(f"FORCING OUTCOMES for {len(orders_without_outcomes)} incomplete orders at backtest end")
             
             current_price = self.dataclose[0]
             current_date = self.datas[0].datetime.date(0).isoformat()
@@ -433,7 +528,8 @@ class MeanReversionStrategy(bt.Strategy):
                     'deposit_after': current_deposit,
                     'deposit_change': current_deposit - deposit_before
                 }
-                print(f"  Added forced outcome for {order['order_id']}: backtest_end @ {current_price:.4f}, P&L: {calculated_pnl:+.2f}")
+                if getattr(self.p, 'verbose', True):
+                    print(f"  Added forced outcome for {order['order_id']}: backtest_end @ {current_price:.4f}, P&L: {calculated_pnl:+.2f}")
         
         # Reset position tracking
         self.order_entry_time = None

@@ -41,6 +41,19 @@ class StrategyConfig:
         'max_positions': 1                      # Maximum concurrent positions
     }
     
+    # Market Regime Detection Parameters
+    MARKET_REGIME = {
+        'enabled': True,                        # Enable/disable regime filtering
+        'adx_period': 14,                      # ADX calculation period
+        'volatility_period': 14,               # ATR period for volatility calculation
+        'volatility_lookback': 100,            # Lookback period for volatility percentile
+        'min_regime_score': 60,                # Minimum regime score to allow trading (0-100)
+        'adx_strong_trend_threshold': 25,      # ADX above this = strong trend (avoid)
+        'adx_moderate_trend_threshold': 20,    # ADX above this = moderate trend
+        'volatility_high_threshold': 67,       # Volatility percentile above this = high vol (avoid)
+        'volatility_low_threshold': 33         # Volatility percentile below this = low vol (prefer)
+    }
+    
     # Order Lifetime Parameters (in minutes)
     ORDER_LIFETIME = {
         '5m': 360,    # 6 hours for 5-minute timeframe (doubled from 3 hours)
@@ -81,6 +94,13 @@ class StrategyConfig:
             'require_reversal': cls.ENTRY_CONDITIONS['require_reversal_confirmation'],
             'min_volume': cls.ENTRY_CONDITIONS['min_volume_threshold'],
             'max_positions': cls.ENTRY_CONDITIONS['max_positions'],
+            
+            # Market regime detection
+            'regime_enabled': cls.MARKET_REGIME['enabled'],
+            'regime_adx_period': cls.MARKET_REGIME['adx_period'],
+            'regime_volatility_period': cls.MARKET_REGIME['volatility_period'],
+            'regime_volatility_lookback': cls.MARKET_REGIME['volatility_lookback'],
+            'regime_min_score': cls.MARKET_REGIME['min_regime_score'],
             
             # Order lifetime
             'order_lifetime_minutes': cls.ORDER_LIFETIME

@@ -11,12 +11,13 @@ class LeveragedBroker(bt.brokers.BackBroker):
     This broker allows positions larger than account balance using leverage.
     """
     
-    def __init__(self, leverage=100.0, actual_cash=100000.0, **kwargs):
+    def __init__(self, leverage=100.0, actual_cash=100000.0, verbose=True, **kwargs):
         super().__init__(**kwargs)
         self.leverage = leverage
         self.actual_cash = actual_cash  # Real account balance for risk management
         self.initial_actual_cash = actual_cash
         self.completed_trades_pnl = 0.0  # Track only completed trades P&L
+        self.verbose = verbose  # Control console output
         
     def setcash(self, cash):
         # Store the actual cash for risk management
@@ -47,13 +48,14 @@ class LeveragedBroker(bt.brokers.BackBroker):
         position_value = size * price
         required_margin = position_value
         
-        print(f"LEVERAGED ORDER: Size={size:,}, Price={price:.4f}, Position Value=${position_value:,.2f}")
-        print(f"Required Margin: ${required_margin:,.2f}, Actual Cash: ${self.get_actual_cash():,.2f}, Leverage: 1:{int(self.leverage)}")
+        if self.verbose:
+            print(f"LEVERAGED ORDER: Size={size:,}, Price={price:.4f}, Position Value=${position_value:,.2f}")
+            print(f"Required Margin: ${required_margin:,.2f}, Actual Cash: ${self.get_actual_cash():,.2f}, Leverage: 1:{int(self.leverage)}")
         
         # For leveraged trading, bypass the cash check since we have virtual cash set high enough
         return super().submit(order, check=False, **kwargs)
 
-def run_backtest(data, strategy_class, params, leverage=100.0):
+def run_backtest(data, strategy_class, params, leverage=100.0, verbose=True):
     cerebro = bt.Cerebro()
     
     # Ensure the data has the correct format for backtrader
@@ -78,7 +80,8 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
     # Drop any rows with NaN values
     data = data.dropna()
     
-    print(f"Backtest data shape: {data.shape}")
+    if verbose:
+        print(f"Backtest data shape: {data.shape}")
     
     # Create datafeed with explicit column mapping
     datafeed = bt.feeds.PandasData(
@@ -97,7 +100,7 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
     
     # Set up SINGLE leveraged broker instance
     actual_cash = 100000  # Real account balance
-    leveraged_broker = LeveragedBroker(leverage=leverage, actual_cash=actual_cash)
+    leveraged_broker = LeveragedBroker(leverage=leverage, actual_cash=actual_cash, verbose=verbose)
     cerebro.setbroker(leveraged_broker)
     
     # Set the cash - this will automatically set leveraged amount internally
@@ -105,9 +108,10 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
     cerebro.broker.setcommission(commission=0.001)
     
     # Configure broker for leveraged trading (forex/CFD style)
-    print(f"Configured broker with 1:{int(leverage)} leverage")
-    print(f"Actual account balance: ${actual_cash:,.0f}")
-    print(f"Virtual buying power: ${actual_cash * leverage:,.0f}")
+    if verbose:
+        print(f"Configured broker with 1:{int(leverage)} leverage")
+        print(f"Actual account balance: ${actual_cash:,.0f}")
+        print(f"Virtual buying power: ${actual_cash * leverage:,.0f}")
     
     # Add analyzers (no portfolio observer since it doesn't work reliably)
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
@@ -123,7 +127,8 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
         
         # If no equity curve was tracked by strategy, calculate it from order history
         if not equity_curve:
-            print("No equity curve found in strategy, calculating from broker state...")
+            if verbose:
+                print("No equity curve found in strategy, calculating from broker state...")
             # Calculate portfolio value based on actual cash + unrealized P&L
             broker = cerebro.broker
             if hasattr(broker, 'get_actual_cash'):
@@ -138,29 +143,32 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
                 final_value = actual_cash + unrealized_pnl
                 equity_curve = [actual_cash, final_value]  # Start with initial, end with final
                 equity_dates = []  # No dates available in fallback mode
-                print(f"Calculated equity curve: start=${actual_cash:.2f}, end=${final_value:.2f}")
+                if verbose:
+                    print(f"Calculated equity curve: start=${actual_cash:.2f}, end=${final_value:.2f}")
             else:
                 # Fallback for standard broker
                 initial_value = actual_cash
                 final_value = broker.getvalue()
                 equity_curve = [initial_value, final_value]
                 equity_dates = []  # No dates available in fallback mode
-                print(f"Using standard broker fallback: start=${initial_value:.2f}, end=${final_value:.2f}")
+                if verbose:
+                    print(f"Using standard broker fallback: start=${initial_value:.2f}, end=${final_value:.2f}")
         else:
-            print(f"Found equity curve with {len(equity_curve)} data points and {len(equity_dates)} dates")
+            if verbose:
+                print(f"Found equity curve with {len(equity_curve)} data points and {len(equity_dates)} dates")
         
         trade_log = getattr(strat, 'trade_log', [])
         order_log = strat.get_order_log() if hasattr(strat, 'get_order_log') else getattr(strat, 'order_log', [])
         
         # Validate that all orders have outcomes
         orders_without_outcomes = [order for order in order_log if 'trade_outcome' not in order]
-        if orders_without_outcomes:
+        if orders_without_outcomes and verbose:
             print(f"WARNING: {len(orders_without_outcomes)} orders found without outcomes!")
             for order in orders_without_outcomes:
                 print(f"  - {order['order_id']}: {order['date']} {order['time']}")
         
-        # Print order summary
-        if order_log:
+        # Print order summary only in verbose mode
+        if order_log and verbose:
             print(f"\n=== ORDER LOG SUMMARY ===")
             print(f"Total orders found: {len(order_log)}")
             orders_with_outcomes = len([o for o in order_log if 'trade_outcome' in o])
@@ -174,7 +182,7 @@ def run_backtest(data, strategy_class, params, leverage=100.0):
                 print(f"   SL: {order['stop_loss']:.4f}, TP: {order['take_profit']:.4f}")
                 print(f"   Reason: {order['reason']}")
                 print()
-        else:
+        elif not order_log and verbose:
             print("No orders found during backtest period.")
         
         return equity_curve, equity_dates, trade_log, order_log
