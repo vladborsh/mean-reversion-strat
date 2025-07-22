@@ -98,6 +98,50 @@ python main.py
 python optimize_strategy.py --quick-test
 ```
 
+## Running with Containers
+
+The strategy can be run in a containerized environment using Podman:
+
+### Building the Container
+
+```bash
+# Build the strategy container
+podman build -t mean-reversion-strategy .
+```
+
+### Running Optimizations in Container
+
+```bash
+# Basic run (results remain inside container)
+podman run mean-reversion-strategy --quick-test
+
+# Run a quick test (results stored in local optimization directory)
+podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --quick-test
+
+# Run grid search with visualization enabled
+podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --grid-search focused --plot-equity-curves
+
+# Run with custom symbol and timeframe
+podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --quick-test --symbol GBPUSD=X --timeframe 1h
+```
+
+### Helper Script
+
+A helper script is provided to simplify container operations:
+
+```bash
+# Build and show usage examples
+./run_optimization.sh
+
+# Run quick test with the script
+./run_optimization.sh --quick-test
+
+# Run grid search with the script
+./run_optimization.sh --grid-search balanced --plot-equity-curves
+```
+
+For more information on container usage, see [Container Documentation](docs/CONTAINER.md).
+
 ## CLI Tools and Commands
 
 ### Strategy Optimization
