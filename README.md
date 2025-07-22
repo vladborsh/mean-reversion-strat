@@ -12,6 +12,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
 - **[Caching System](docs/CACHING.md)** - Data caching implementation
 - **[Container Documentation](CONTAINER.md)** - Container usage and deployment
+- **[AWS Batch Setup](docs/AWS_BATCH_SETUP.md)** - AWS Batch configuration and deployment
 - **[Transport Layer](docs/TRANSPORT_LAYER.md)** - Storage backends and configuration
 
 ## Features
