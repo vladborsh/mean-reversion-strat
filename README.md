@@ -2,6 +2,18 @@
 
 A comprehensive trading strategy implementation using Bollinger Bands and VWAP for mean reversion trading across forex, crypto, and indices markets.
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
+- **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
+- **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
+- **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
+- **[Caching System](docs/CACHING.md)** - Data caching implementation
+- **[Container Documentation](CONTAINER.md)** - Container usage and deployment
+- **[Transport Layer](docs/TRANSPORT_LAYER.md)** - Storage backends and configuration
+
 ## Features
 
 - **Multi-Asset Support**: Forex, Crypto, and Indices with multiple data providers
@@ -11,6 +23,7 @@ A comprehensive trading strategy implementation using Bollinger Bands and VWAP f
 - **Performance Tools**: Data caching, market hours validation, visualization
 - **Backtesting**: Complete backtest engine with comprehensive metrics
 - **Optimization**: Multiple hyperparameter tuning approaches with dedicated CLI
+- **🆕 Transport Layer**: Optional AWS S3 storage for caching and logs with local fallback
 
 ## Installation and Setup
 
@@ -123,6 +136,9 @@ podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy
 
 # Run with custom symbol and timeframe
 podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --quick-test --symbol GBPUSD=X --timeframe 1h
+
+# Run focused grid search with S3 transport for cache and logs
+podman run --rm mean-reversion-strategy --grid-search focused --symbol GBPUSD=X --timeframe 5m --cache-transport s3 --log-transport s3
 ```
 
 ### Helper Script
@@ -144,6 +160,27 @@ For more information on container usage, see [Container Documentation](docs/CONT
 
 ## CLI Tools and Commands
 
+All CLI tools now support transport configuration for cache and logs. Use `--cache-transport` and `--log-transport` flags to specify storage backend:
+
+- `--cache-transport local|s3`: Cache storage (default: local)  
+- `--log-transport local|s3`: Log/optimization storage (default: local)
+
+### Strategy Backtesting
+
+```bash
+# Basic strategy run with local storage
+python main.py
+
+# Run with S3 storage for cache and logs
+python main.py --cache-transport s3 --log-transport s3
+
+# Mixed storage: local cache, S3 logs
+python main.py --cache-transport local --log-transport s3
+
+# Custom symbol and timeframe
+python main.py --symbol GBPUSD=X --timeframe 1h --cache-transport s3
+```
+
 ### Strategy Optimization
 
 ```bash
@@ -158,6 +195,10 @@ python optimize_strategy.py --grid-search risk      # Risk management focused
 # Random search (faster for large parameter spaces)
 python optimize_strategy.py --random-search 100 --sort-objective balanced
 
+# With transport configuration
+python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
+python optimize_strategy.py --random-search 50 --cache-transport local --log-transport s3
+
 # Custom optimization objectives
 python optimize_strategy.py --grid-search balanced --sort-objective max_sharpe
 python optimize_strategy.py --grid-search balanced --sort-objective min_drawdown
@@ -165,22 +206,33 @@ python optimize_strategy.py --grid-search balanced --sort-objective risk_adjuste
 
 # Time period selection
 python optimize_strategy.py --grid-search balanced --years 2 --timeframe 1h
+
+# Reduce console output during optimization (useful for automated runs)
+python optimize_strategy.py --grid-search balanced --quiet
+python optimize_strategy.py --random-search 100 --quiet --sort-objective balanced
 ```
 
 ### Cache Management
 
 ```bash
 # View cache information
-python cache_manager.py info
+python cache_manager.py info --cache-transport local
+python cache_manager.py info --cache-transport s3
+
+# View optimization storage info  
+python cache_manager.py optimization-info --log-transport s3
 
 # Clear old cache files (older than 30 days)
-python cache_manager.py clear --max-age-days 30
+python cache_manager.py clear --max-age-days 30 --cache-transport local
 
 # Clear all cache
-python cache_manager.py clear
+python cache_manager.py clear --cache-transport s3
+
+# Clear logs in S3 storage
+python cache_manager.py clear --log-transport s3
 
 # Invalidate cache for specific symbol
-python cache_manager.py invalidate --symbol EURUSD=X
+python cache_manager.py invalidate --symbol EURUSD=X --cache-transport local
 ```
 
 ### Data Fetching
@@ -247,12 +299,103 @@ params = {
 - **Sell Signal**: Price breaks above both Bollinger and VWAP upper bands, then reverses
 - **Risk Management**: Configurable stop loss and take profit levels
 
-## Documentation
+## Transport Layer
 
-Comprehensive documentation is available in the `docs/` directory:
+The project supports flexible storage backends for caching and logging:
 
-- **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
-- **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
-- **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
-- **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
-- **[Caching System](docs/CACHING.md)** - Data caching implementation
+### Local Storage (Default)
+- Fast access for development and testing
+- No external dependencies
+- All data stored in project directories
+
+### AWS S3 Storage (Optional)
+- Cloud storage for scalability and team collaboration
+- Automatic backup and durability
+- Configurable through environment variables
+
+### Configuration
+Add to your `.env` file for S3 support:
+
+```bash
+# AWS S3 Configuration (optional)
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your-bucket-name
+AWS_S3_PREFIX=mean-reversion-strat/
+
+# Note: CACHE_TRANSPORT and LOG_TRANSPORT are now configured via CLI arguments
+# Use --cache-transport and --log-transport options when running scripts
+```
+
+### Transport Selection
+
+Transport type is now specified via command-line arguments instead of environment variables:
+
+**Cache Transport** (`--cache-transport`):
+- `local`: Store cache files in local `cache/` directory  
+- `s3`: Store cache files in AWS S3 bucket
+
+**Log Transport** (`--log-transport`):
+- `local`: Store optimization logs/results in local `optimization/` directory
+- `s3`: Store optimization logs/results in AWS S3 bucket
+
+**Examples:**
+```bash
+# Use local storage for everything (default)
+python main.py --cache-transport local --log-transport local
+
+# Use S3 for cache, local for logs
+python main.py --cache-transport s3 --log-transport local
+
+# Use S3 for everything
+python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
+```
+
+For detailed transport layer documentation, see [docs/TRANSPORT_LAYER.md](docs/TRANSPORT_LAYER.md).
+
+### Migration from Environment Variables
+
+**Previous approach (deprecated):**
+```bash
+# Old .env configuration (no longer used)
+CACHE_TRANSPORT=s3
+LOG_TRANSPORT=s3
+```
+
+**New approach (current):**
+```bash
+# Use CLI arguments instead
+python main.py --cache-transport s3 --log-transport s3
+python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
+python cache_manager.py info --cache-transport s3 --log-transport s3
+```
+
+**Benefits of CLI approach:**
+- More explicit and visible configuration
+- Easy to override per command without changing files
+- Better support for CI/CD and automation scripts
+- Clear separation between environment secrets (API keys) and transport configuration
+
+### Quick Reference: Transport CLI Options
+
+All strategy scripts support these transport arguments:
+
+| Argument | Values | Default | Description |
+|----------|--------|---------|-------------|
+| `--cache-transport` | `local`, `s3` | `local` | Where to store data cache files |
+| `--log-transport` | `local`, `s3` | `local` | Where to store optimization logs/results |
+
+**Available in:**
+- `main.py` - Main strategy backtesting
+- `optimize_strategy.py` - Hyperparameter optimization
+- `cache_manager.py` - Cache management utilities
+
+**Examples:**
+```bash
+# Different combinations for different use cases
+python main.py --cache-transport local --log-transport local    # All local (default)
+python main.py --cache-transport s3 --log-transport local       # S3 cache, local logs
+python main.py --cache-transport local --log-transport s3       # Local cache, S3 logs  
+python main.py --cache-transport s3 --log-transport s3          # All S3
+```

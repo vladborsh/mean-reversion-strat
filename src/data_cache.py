@@ -1,6 +1,6 @@
 """
 Data caching module for storing and retrieving fetched market data.
-Provides persistent file-based caching with intelligent cache invalidation.
+Provides persistent caching with support for local filesystem and cloud storage (S3).
 """
 
 import os
@@ -11,42 +11,40 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
+from .transport_factory import create_cache_transport
+from .transport import TransportInterface
+
 logger = logging.getLogger(__name__)
 
 class DataCache:
     """
-    File-based cache for market data with intelligent expiration logic.
+    Unified cache for market data with support for multiple storage backends.
     
     Features:
-    - Persistent storage between runs
+    - Persistent storage between runs (local or S3)
     - Intelligent cache invalidation based on data age and market hours
-    - Configurable cache directory and retention policies
+    - Configurable transport layer (local filesystem or S3)
     - Thread-safe operations
     """
     
-    def __init__(self, cache_dir=None, max_age_hours=24):
+    def __init__(self, cache_dir=None, max_age_hours=24, transport: TransportInterface = None):
         """
         Initialize the data cache.
         
         Args:
-            cache_dir (str, optional): Directory to store cache files. 
-                                     Defaults to './cache' in project root.
+            cache_dir (str, optional): Directory for local transport. Ignored if transport provided.
             max_age_hours (int): Maximum age of cached data in hours before expiration.
-                               Defaults to 24 hours.
+            transport (TransportInterface, optional): Custom transport layer
         """
-        if cache_dir is None:
-            # Use cache directory in project root
-            project_root = Path(__file__).parent.parent
-            cache_dir = project_root / 'cache'
-        
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(exist_ok=True)
         self.max_age_hours = max_age_hours
         
-        # Create metadata file for cache management
-        self.metadata_file = self.cache_dir / '.cache_metadata.json'
+        if transport:
+            self.transport = transport
+        else:
+            self.transport = create_cache_transport(cache_dir)
         
-        logger.info(f"DataCache initialized with directory: {self.cache_dir}")
+        logger.info(f"DataCache initialized with {type(self.transport).__name__}")
+    
     
     def _generate_cache_key(self, source, symbol, timeframe, years, additional_params=None):
         """
@@ -73,42 +71,43 @@ class DataCache:
         
         # Use MD5 hash to create a shorter, consistent key
         cache_key = hashlib.md5(key_data.encode()).hexdigest()
-        return cache_key
+        return f"{cache_key}.pkl"
     
-    def _get_cache_file_path(self, cache_key):
-        """Get the full path for a cache file."""
-        return self.cache_dir / f"{cache_key}.pkl"
-    
-    def _is_cache_valid(self, cache_file_path, timeframe):
+    def _is_cache_valid(self, cache_key, timeframe, metadata):
         """
-        Check if cached data is still valid based on file age and market context.
+        Check if cached data is still valid based on age and market context.
         
         Args:
-            cache_file_path (Path): Path to the cache file
+            cache_key (str): Cache key to check
             timeframe (str): Data timeframe to determine appropriate cache duration
+            metadata (dict): Cache metadata containing timestamp info
             
         Returns:
             bool: True if cache is valid, False if expired
         """
-        if not cache_file_path.exists():
+        if not metadata or 'cached_at' not in metadata:
             return False
         
-        # Get file modification time
-        file_mtime = datetime.fromtimestamp(cache_file_path.stat().st_mtime)
-        current_time = datetime.now()
-        age_hours = (current_time - file_mtime).total_seconds() / 3600
-        
-        # Determine cache validity based on timeframe
-        max_age = self._get_cache_expiry_hours(timeframe)
-        
-        is_valid = age_hours < max_age
-        
-        if not is_valid:
-            logger.info(f"Cache expired: age={age_hours:.1f}h, max_age={max_age}h")
-        else:
-            logger.info(f"Cache valid: age={age_hours:.1f}h, max_age={max_age}h")
+        try:
+            # Parse cached timestamp
+            cached_time = datetime.fromisoformat(metadata['cached_at'])
+            current_time = datetime.now()
+            age_hours = (current_time - cached_time).total_seconds() / 3600
             
-        return is_valid
+            # Determine cache validity based on timeframe
+            max_age = self._get_cache_expiry_hours(timeframe)
+            
+            is_valid = age_hours < max_age
+            
+            if not is_valid:
+                logger.info(f"Cache expired: age={age_hours:.1f}h, max_age={max_age}h")
+            else:
+                logger.info(f"Cache valid: age={age_hours:.1f}h, max_age={max_age}h")
+                
+            return is_valid
+        except Exception as e:
+            logger.error(f"Error validating cache: {e}")
+            return False
     
     def _get_cache_expiry_hours(self, timeframe):
         """
@@ -145,20 +144,24 @@ class DataCache:
             pandas.DataFrame or None: Cached data if available and valid, None otherwise
         """
         cache_key = self._generate_cache_key(source, symbol, timeframe, years, additional_params)
-        cache_file = self._get_cache_file_path(cache_key)
         
         logger.info(f"Checking cache for key: {cache_key}")
         
-        if not self._is_cache_valid(cache_file, timeframe):
+        if not self.transport.exists(cache_key):
+            logger.debug(f"Cache miss: {cache_key} not found")
             return None
         
         try:
-            with open(cache_file, 'rb') as f:
-                cache_data = pickle.load(f)
+            cache_data = self.transport.load_pickle(cache_key)
             
+            if cache_data is None:
+                logger.debug(f"Cache miss: failed to load {cache_key}")
+                return None
+                
             # Validate cached data structure
             if not isinstance(cache_data, dict) or 'data' not in cache_data:
-                logger.warning(f"Invalid cache data structure in {cache_file}")
+                logger.warning(f"Invalid cache data structure in {cache_key}")
+                self.transport.delete(cache_key)  # Remove corrupted cache
                 return None
             
             data = cache_data['data']
@@ -166,7 +169,13 @@ class DataCache:
             
             # Validate that cached data is a DataFrame
             if not isinstance(data, pd.DataFrame):
-                logger.warning(f"Cached data is not a DataFrame in {cache_file}")
+                logger.warning(f"Cached data is not a DataFrame in {cache_key}")
+                self.transport.delete(cache_key)  # Remove corrupted cache
+                return None
+            
+            # Check if cache is still valid
+            if not self._is_cache_valid(cache_key, timeframe, metadata):
+                self.transport.delete(cache_key)  # Remove expired cache
                 return None
             
             logger.info(f"Cache hit! Loaded {len(data)} rows from cache")
@@ -175,11 +184,11 @@ class DataCache:
             return data
             
         except Exception as e:
-            logger.error(f"Error loading cache file {cache_file}: {e}")
+            logger.error(f"Error loading cache {cache_key}: {e}")
             # Remove corrupted cache file
             try:
-                cache_file.unlink()
-                logger.info(f"Removed corrupted cache file: {cache_file}")
+                self.transport.delete(cache_key)
+                logger.info(f"Removed corrupted cache: {cache_key}")
             except:
                 pass
             return None
@@ -202,7 +211,6 @@ class DataCache:
             return
         
         cache_key = self._generate_cache_key(source, symbol, timeframe, years, additional_params)
-        cache_file = self._get_cache_file_path(cache_key)
         
         # Prepare cache data with metadata
         cache_data = {
@@ -220,15 +228,10 @@ class DataCache:
             }
         }
         
-        try:
-            with open(cache_file, 'wb') as f:
-                pickle.dump(cache_data, f, protocol=pickle.HIGHEST_PROTOCOL)
-            
-            logger.info(f"Cached {len(data)} rows to {cache_file}")
-            logger.info(f"Cache key: {cache_key}")
-            
-        except Exception as e:
-            logger.error(f"Error saving cache file {cache_file}: {e}")
+        if self.transport.save_pickle(cache_key, cache_data):
+            logger.info(f"Cached {len(data)} rows to {cache_key}")
+        else:
+            logger.error(f"Failed to cache data to {cache_key}")
     
     def clear(self, max_age_days=30):
         """
@@ -236,21 +239,13 @@ class DataCache:
         
         Args:
             max_age_days (int): Remove cache files older than this many days
+            
+        Returns:
+            int: Number of files removed
         """
-        cutoff_time = datetime.now() - timedelta(days=max_age_days)
-        removed_count = 0
-        
-        for cache_file in self.cache_dir.glob("*.pkl"):
-            try:
-                file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
-                if file_mtime < cutoff_time:
-                    cache_file.unlink()
-                    removed_count += 1
-                    logger.info(f"Removed old cache file: {cache_file}")
-            except Exception as e:
-                logger.error(f"Error removing cache file {cache_file}: {e}")
-        
+        removed_count = self.transport.cleanup(max_age_days)
         logger.info(f"Cache cleanup completed. Removed {removed_count} old files.")
+        return removed_count
     
     def get_cache_info(self):
         """
@@ -259,51 +254,19 @@ class DataCache:
         Returns:
             dict: Cache statistics and information
         """
-        cache_files = list(self.cache_dir.glob("*.pkl"))
-        total_size = sum(f.stat().st_size for f in cache_files)
-        
-        info = {
-            'cache_directory': str(self.cache_dir),
-            'total_files': len(cache_files),
-            'total_size_mb': total_size / (1024 * 1024),
-            'files': []
-        }
-        
-        for cache_file in cache_files:
-            try:
-                file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
-                file_size = cache_file.stat().st_size
-                
-                file_info = {
-                    'filename': cache_file.name,
-                    'size_kb': file_size / 1024,
-                    'modified': file_mtime.isoformat(),
-                    'age_hours': (datetime.now() - file_mtime).total_seconds() / 3600
-                }
-                
-                # Try to load metadata if possible
-                try:
-                    with open(cache_file, 'rb') as f:
-                        cache_data = pickle.load(f)
-                    file_info['metadata'] = cache_data.get('metadata', {})
-                except:
-                    file_info['metadata'] = {'error': 'Could not load metadata'}
-                
-                info['files'].append(file_info)
-                
-            except Exception as e:
-                logger.error(f"Error reading cache file info {cache_file}: {e}")
-        
-        return info
+        return self.transport.get_info()
+
 
 # Global cache instance
 _global_cache = None
 
-def get_global_cache():
-    """Get or create the global cache instance."""
+def get_global_cache(transport_type='local'):
+    """Get or create the global cache instance with specified transport type."""
     global _global_cache
     if _global_cache is None:
-        _global_cache = DataCache()
+        from .transport_factory import create_cache_transport
+        transport = create_cache_transport(transport_type=transport_type)
+        _global_cache = DataCache(transport=transport)
     return _global_cache
 
 def clear_global_cache():

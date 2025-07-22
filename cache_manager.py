@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
 """
 Cache management utility for the mean reversion strategy project.
-Provides commands to inspect, clean, and manage the data cache.
+Provides commands to inspect, clean, and manage the data cache and optimization storage.
+Supports both local filesystem and AWS S3 transport layers.
 """
 
 import argparse
 import sys
+import os
+import time
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 from src.data_fetcher import DataFetcher
-from src.data_cache import get_global_cache
+from src.data_cache import DataCache
+from src.transport_factory import create_cache_transport, create_optimization_transport
+
+# Global variables to store transport types for the session
+CACHE_TRANSPORT_TYPE = 'local'
+LOG_TRANSPORT_TYPE = 'local'
 
 def show_cache_info():
     """Display detailed cache information"""
@@ -17,70 +30,150 @@ def show_cache_info():
     print("DATA CACHE INFORMATION")
     print("="*60)
     
-    cache_info = DataFetcher.get_global_cache_info()
-    
-    print(f"Cache Directory: {cache_info['cache_directory']}")
-    print(f"Total Files: {cache_info['total_files']}")
-    print(f"Total Size: {cache_info['total_size_mb']:.2f} MB")
-    print()
-    
-    if cache_info['files']:
-        print("Cached Files:")
-        print("-" * 80)
-        print(f"{'Filename':<20} {'Size (KB)':<10} {'Age (hours)':<12} {'Symbol':<12} {'Timeframe':<10} {'Provider'}")
-        print("-" * 80)
+    try:
+        # Create cache transport with specified type
+        cache_transport = create_cache_transport(transport_type=CACHE_TRANSPORT_TYPE)
+        cache = DataCache(transport=cache_transport)
+        cache_info = cache.get_info()
         
-        for file_info in sorted(cache_info['files'], key=lambda x: x['age_hours']):
-            metadata = file_info.get('metadata', {})
+        transport_type = cache_info.get('transport_type', 'unknown')
+        print(f"Transport Type: {transport_type.upper()}")
+        
+        if transport_type == 'local':
+            print(f"Cache Directory: {cache_info.get('base_directory', 'N/A')}")
+        elif transport_type == 's3':
+            print(f"S3 Bucket: {cache_info.get('bucket', 'N/A')}")
+            print(f"S3 Prefix: {cache_info.get('prefix', 'N/A')}")
+        
+        print(f"Total Files: {cache_info['total_files']}")
+        print(f"Total Size: {cache_info['total_size_mb']:.2f} MB")
+        print()
+        
+        if cache_info['files']:
+            print("Cached Files:")
+            print("-" * 80)
+            print(f"{'Key':<30} {'Size (KB)':<10} {'Age (hours)':<12} {'Symbol':<12} {'Timeframe':<10} {'Provider'}")
+            print("-" * 80)
             
-            symbol = metadata.get('symbol', 'Unknown')[:11]
-            timeframe = metadata.get('timeframe', 'Unknown')
-            provider = metadata.get('provider', 'Unknown')
+            for file_info in sorted(cache_info['files'], key=lambda x: x['age_hours']):
+                metadata = file_info.get('metadata', {})
+                
+                symbol = str(metadata.get('symbol', 'Unknown'))[:11]
+                timeframe = metadata.get('timeframe', 'Unknown')
+                provider = metadata.get('provider', 'Unknown')
+                
+                print(f"{file_info['key'][:29]:<30} "
+                      f"{file_info['size_bytes']/1024:<10.1f} "
+                      f"{file_info['age_hours']:<12.1f} "
+                      f"{symbol:<12} "
+                      f"{timeframe:<10} "
+                      f"{provider}")
+        else:
+            print("No cached files found.")
+    
+    except Exception as e:
+        print(f"❌ Error accessing cache: {e}")
+
+def show_optimization_info():
+    """Display optimization storage information"""
+    print("="*60)
+    print("OPTIMIZATION STORAGE INFORMATION")
+    print("="*60)
+    
+    try:
+        transport = create_optimization_transport(transport_type=LOG_TRANSPORT_TYPE)
+        opt_info = transport.get_info()
+        
+        transport_type = opt_info.get('transport_type', 'unknown')
+        print(f"Transport Type: {transport_type.upper()}")
+        
+        if transport_type == 'local':
+            print(f"Directory: {opt_info.get('base_directory', 'N/A')}")
+        elif transport_type == 's3':
+            print(f"S3 Bucket: {opt_info.get('bucket', 'N/A')}")
+            print(f"S3 Prefix: {opt_info.get('prefix', 'N/A')}")
+        
+        print(f"Total Files: {opt_info['total_files']}")
+        print(f"Total Size: {opt_info['total_size_mb']:.2f} MB")
+        print()
+        
+        if opt_info['files']:
+            # Categorize files by type
+            categories = {
+                'cache': [],
+                'results': [],
+                'logs': [],
+                'plots': [],
+                'orders': []
+            }
             
-            print(f"{file_info['filename'][:19]:<20} "
-                  f"{file_info['size_kb']:<10.1f} "
-                  f"{file_info['age_hours']:<12.1f} "
-                  f"{symbol:<12} "
-                  f"{timeframe:<10} "
-                  f"{provider}")
-    else:
-        print("No cached files found.")
+            for file_info in opt_info['files']:
+                key = file_info['key']
+                if key.startswith('cache/'):
+                    categories['cache'].append(file_info)
+                elif key.startswith('results/'):
+                    categories['results'].append(file_info)
+                elif key.startswith('logs/'):
+                    categories['logs'].append(file_info)
+                elif key.startswith('plots/'):
+                    categories['plots'].append(file_info)
+                elif key.startswith('orders/'):
+                    categories['orders'].append(file_info)
+            
+            for category, files in categories.items():
+                if files:
+                    print(f"\n{category.upper()} FILES ({len(files)} files):")
+                    print("-" * 60)
+                    for file_info in sorted(files, key=lambda x: x['age_hours'])[:10]:  # Show latest 10
+                        size_kb = file_info['size_bytes'] / 1024
+                        print(f"  {file_info['key'][:50]:<50} {size_kb:>8.1f} KB  {file_info['age_hours']:>6.1f}h")
+                    
+                    if len(files) > 10:
+                        print(f"  ... and {len(files) - 10} more files")
+        else:
+            print("No optimization files found.")
+            
+    except Exception as e:
+        print(f"❌ Error accessing optimization storage: {e}")
 
 def clear_cache(max_age_days=None):
     """Clear cache files"""
+    print("="*60)
+    print("CACHE CLEANUP")
+    print("="*60)
+    
     if max_age_days is None:
-        # Clear all cache files
-        response = input("This will delete ALL cached data. Are you sure? (y/N): ")
+        response = input("⚠️  This will clear ALL cache files. Continue? (y/N): ")
         if response.lower() != 'y':
-            print("Cache clearing cancelled.")
+            print("❌ Cache cleanup cancelled")
             return
+        max_age_days = 0  # Clear all
+    
+    print(f"🗑️  Clearing cache files older than {max_age_days} days...")
+    
+    try:
+        # Clear data cache
+        cache_transport = create_cache_transport(transport_type=CACHE_TRANSPORT_TYPE)
+        cache = DataCache(transport=cache_transport)
+        cache_removed = cache.clear(max_age_days)
         
-        cache = get_global_cache()
-        cache_dir = Path(cache.cache_dir)
+        # Clear optimization cache
+        opt_transport = create_optimization_transport(transport_type=LOG_TRANSPORT_TYPE)
+        opt_removed = opt_transport.cleanup(max_age_days)
         
-        deleted_count = 0
-        for cache_file in cache_dir.glob("*.pkl"):
-            try:
-                cache_file.unlink()
-                deleted_count += 1
-            except Exception as e:
-                print(f"Error deleting {cache_file}: {e}")
+        total_removed = cache_removed + opt_removed
+        print(f"✅ Cleanup completed. Removed {total_removed} files.")
+        print(f"   - Data cache: {cache_removed} files")
+        print(f"   - Optimization: {opt_removed} files")
         
-        print(f"Deleted {deleted_count} cache files.")
-        
-    else:
-        # Clear old cache files
-        print(f"Clearing cache files older than {max_age_days} days...")
-        DataFetcher.clear_global_cache(max_age_days=max_age_days)
-        print("Cache cleanup completed.")
+    except Exception as e:
+        print(f"❌ Error during cleanup: {e}")
 
 def test_cache_performance():
     """Test cache performance with a sample fetch"""
     print("="*60)
     print("CACHE PERFORMANCE TEST")
     print("="*60)
-    
-    import time
     
     # Test parameters
     symbol = 'EURUSD=X'
@@ -96,7 +189,10 @@ def test_cache_performance():
     start_time = time.time()
     
     try:
-        fetcher = DataFetcher(source=source, symbol=symbol, timeframe=timeframe, use_cache=True)
+        # Create cache transport with specified type
+        cache_transport = create_cache_transport(transport_type=CACHE_TRANSPORT_TYPE)
+        fetcher = DataFetcher(source=source, symbol=symbol, timeframe=timeframe, 
+                            use_cache=True, cache_transport=cache_transport)
         df = fetcher.fetch(years=years)
         cached_time = time.time() - start_time
         
@@ -128,53 +224,65 @@ def test_cache_performance():
 def invalidate_symbol_cache():
     """Interactively invalidate cache for a specific symbol"""
     print("="*60)
-    print("INVALIDATE SYMBOL CACHE")
+    print("CACHE INVALIDATION")
     print("="*60)
     
-    # Get user input
-    source = input("Enter source (forex/crypto/indices): ").strip().lower()
-    if source not in ['forex', 'crypto', 'indices']:
-        print("Invalid source. Must be forex, crypto, or indices.")
-        return
-    
-    symbol = input("Enter symbol (e.g., EURUSD=X): ").strip()
+    symbol = input("Enter symbol to invalidate (e.g., EURUSD=X): ").strip()
     if not symbol:
-        print("Symbol cannot be empty.")
+        print("❌ No symbol provided")
         return
     
-    timeframe = input("Enter timeframe (15m/1h/4h/1d): ").strip()
-    if timeframe not in ['15m', '1h', '4h', '1d']:
-        print("Invalid timeframe. Must be 15m, 1h, 4h, or 1d.")
-        return
+    source = input("Enter source [forex]: ").strip() or 'forex'
+    timeframe = input("Enter timeframe [1h]: ").strip() or '1h'
+    years = input("Enter years [all]: ").strip()
     
     try:
-        years = input("Enter years (or press Enter for all common values): ").strip()
-        years = int(years) if years else None
-    except ValueError:
-        print("Invalid years value.")
-        return
-    
-    # Invalidate cache
-    fetcher = DataFetcher(source=source, symbol=symbol, timeframe=timeframe)
-    
-    if years:
-        fetcher.invalidate_cache_for_symbol(years=years)
-    else:
-        fetcher.invalidate_cache_for_symbol()
-    
-    print("Cache invalidation completed.")
+        # Create cache transport with specified type
+        cache_transport = create_cache_transport(transport_type=CACHE_TRANSPORT_TYPE)
+        fetcher = DataFetcher(source=source, symbol=symbol, timeframe=timeframe, 
+                            cache_transport=cache_transport)
+        
+        if years and years.isdigit():
+            fetcher.invalidate_cache_for_symbol(years=int(years))
+            print(f"✅ Cache invalidated for {symbol} ({years} years)")
+        else:
+            fetcher.invalidate_cache_for_symbol()
+            print(f"✅ All cache invalidated for {symbol}")
+            
+    except Exception as e:
+        print(f"❌ Error invalidating cache: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Cache management utility')
-    parser.add_argument('command', choices=['info', 'clear', 'test', 'invalidate'], 
+    global CACHE_TRANSPORT_TYPE, LOG_TRANSPORT_TYPE
+    
+    parser = argparse.ArgumentParser(description='Cache and optimization storage management utility')
+    parser.add_argument('command', choices=['info', 'optimization-info', 'clear', 'test', 'invalidate'], 
                       help='Command to execute')
     parser.add_argument('--max-age-days', type=int, 
                       help='Maximum age in days for cache files (used with clear command)')
+    parser.add_argument('--cache-transport', default='local',
+                       choices=['local', 's3'],
+                       help='Cache transport type (default: local)')
+    parser.add_argument('--log-transport', default='local',
+                       choices=['local', 's3'],
+                       help='Log transport type (default: local)')
     
     args = parser.parse_args()
     
+    # Set global transport types based on arguments
+    CACHE_TRANSPORT_TYPE = args.cache_transport
+    LOG_TRANSPORT_TYPE = args.log_transport
+    
+    print("🗂️  Cache Manager")
+    print(f"🔧 Cache Transport: {args.cache_transport}")
+    print(f"📊 Log Transport: {args.log_transport}")
+    print(f"⚡ Command: {args.command}")
+    print("-" * 50)
+    
     if args.command == 'info':
         show_cache_info()
+    elif args.command == 'optimization-info':
+        show_optimization_info()
     elif args.command == 'clear':
         clear_cache(args.max_age_days)
     elif args.command == 'test':
@@ -184,3 +292,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+

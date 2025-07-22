@@ -126,6 +126,14 @@ Examples:
     parser.add_argument('--years', type=int, default=2,
                        help='Years of historical data (default: 2)')
     
+    # Transport configuration
+    parser.add_argument('--cache-transport', default='local',
+                       choices=['local', 's3'],
+                       help='Cache transport type (default: local)')
+    parser.add_argument('--log-transport', default='local',
+                       choices=['local', 's3'],
+                       help='Log transport type (default: local)')
+    
     # Optimization parameters
     parser.add_argument('--sort-objective', default='balanced',
                        choices=['max_pnl', 'max_sharpe', 'max_winrate', 
@@ -148,6 +156,9 @@ Examples:
     
     # Initialize optimizer
     print("🚀 Initializing hyperparameter optimizer...")
+    print(f"🔧 Cache Transport: {args.cache_transport}")
+    print(f"📊 Log Transport: {args.log_transport}")
+    
     optimizer = HyperparameterOptimizer(
         data_source=args.source,
         symbol=args.symbol,
@@ -156,7 +167,9 @@ Examples:
         optimization_dir=args.output_dir,
         plot_equity_curves=args.plot_equity_curves,
         plot_orders=args.plot_orders,
-        verbose=not args.quiet
+        verbose=not args.quiet,
+        cache_transport_type=args.cache_transport,
+        log_transport_type=args.log_transport
     )
     
     # Run optimization based on arguments

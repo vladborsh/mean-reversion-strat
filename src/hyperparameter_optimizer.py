@@ -2,13 +2,13 @@
 Hyperparameter Optimization Module
 
 This module provides comprehensive hyperparameter optimization for the mean reversion strategy
-with caching, intermediate result logging, and CSV output capabilities.
+with caching, intermediate result logging, and CSV output capabilities with transport layer support.
 
 Features:
 - Grid search and random search optimization
-- Market data caching for consistent testing
-- Intermediate results caching to resume optimization
-- CSV logging of all results
+- Market data caching for consistent testing (local or S3)
+- Intermediate results caching to resume optimization (local or S3)
+- CSV logging of all results (local or S3)
 - Progress tracking and estimated completion time
 - Best parameter tracking with multiple objectives
 - Parallel execution support (optional)
@@ -27,6 +27,11 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple, Union
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
+import json
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -39,6 +44,7 @@ from src.data_fetcher import DataFetcher
 from src.strategy_config import StrategyConfig
 from src.chart_plotters import plot_equity_curve
 from src.order_visualization import save_order_plots
+from src.transport_factory import create_optimization_transport, create_cache_transport
 
 
 @dataclass
@@ -113,6 +119,7 @@ class ParameterGrid:
 class HyperparameterOptimizer:
     """
     Main hyperparameter optimization class with comprehensive caching and logging
+    with transport layer support for local and cloud storage.
     """
     
     def __init__(
@@ -124,7 +131,9 @@ class HyperparameterOptimizer:
         optimization_dir: Optional[str] = None,
         plot_equity_curves: bool = False,
         plot_orders: bool = False,
-        verbose: bool = True
+        verbose: bool = True,
+        cache_transport_type: str = 'local',
+        log_transport_type: str = 'local'
     ):
         """
         Initialize the optimizer
@@ -134,10 +143,12 @@ class HyperparameterOptimizer:
             symbol: Trading symbol
             timeframe: Data timeframe
             years: Years of historical data
-            optimization_dir: Directory to store optimization results
+            optimization_dir: Directory to store optimization results (ignored if using S3)
             plot_equity_curves: Whether to save equity curve plots for each run
             plot_orders: Whether to save order plots for each run
             verbose: Enable detailed logging output
+            cache_transport_type: Cache transport type ('local' or 's3')
+            log_transport_type: Log transport type ('local' or 's3')
         """
         self.data_source = data_source
         self.symbol = symbol
@@ -146,25 +157,15 @@ class HyperparameterOptimizer:
         self.plot_equity_curves = plot_equity_curves
         self.plot_orders = plot_orders
         self.verbose = verbose
+        self.cache_transport_type = cache_transport_type
+        self.log_transport_type = log_transport_type
         
-        # Setup directories
-        self.project_root = Path(__file__).parent.parent
-        self.optimization_dir = Path(optimization_dir) if optimization_dir else self.project_root / 'optimization'
-        self.cache_dir = self.optimization_dir / 'cache'
-        self.results_dir = self.optimization_dir / 'results'
-        self.logs_dir = self.optimization_dir / 'logs'
-        self.plots_dir = self.optimization_dir / 'plots' if self.plot_equity_curves else None
-        self.orders_dir = self.optimization_dir / 'orders' if self.plot_orders else None
+        # Initialize transport layers
+        self.cache_transport = create_cache_transport(transport_type=cache_transport_type)
+        self.optimization_transport = create_optimization_transport(optimization_dir, transport_type=log_transport_type)
         
-        # Create directories
-        dirs_to_create = [self.optimization_dir, self.cache_dir, self.results_dir, self.logs_dir]
-        if self.plots_dir:
-            dirs_to_create.append(self.plots_dir)
-        if self.orders_dir:
-            dirs_to_create.append(self.orders_dir)
-        
-        for dir_path in dirs_to_create:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        print(f"💾 Cache transport: {type(self.cache_transport).__name__}")
+        print(f"📊 Optimization transport: {type(self.optimization_transport).__name__}")
         
         # Initialize components
         self.data = None
@@ -172,32 +173,40 @@ class HyperparameterOptimizer:
         self.results = []
         self.best_results = {}
         self.start_time = None
+        self.backtest_times = []  # Track individual backtest execution times
         
-        # File paths
-        self.results_csv_path = None
-        self.progress_file_path = None
-        self.best_params_file_path = None
+        # File paths (now transport keys)
+        self.results_csv_key = None
+        self.progress_file_key = None
+        self.best_params_file_key = None
         
     def _get_data_hash(self) -> str:
         """Generate hash for data parameters"""
         data_params = f"{self.data_source}_{self.symbol}_{self.timeframe}_{self.years}"
         return hashlib.md5(data_params.encode()).hexdigest()[:12]
     
+    def _get_symbol_identifier(self) -> str:
+        """Generate clean symbol identifier for file names"""
+        # Clean symbol for file naming (remove special characters, limit length)
+        symbol_clean = self.symbol.replace('=', '').replace('/', '').replace('-', '_').upper()
+        # Limit to 10 characters to keep file names reasonable
+        return symbol_clean[:10]
+    
     def _load_cached_data(self) -> Optional[pd.DataFrame]:
         """Load cached market data if available"""
         if not self.data_hash:
             self.data_hash = self._get_data_hash()
         
-        cache_file = self.cache_dir / f"data_{self.data_hash}.pkl"
+        symbol_id = self._get_symbol_identifier()
+        cache_key = f"cache/{symbol_id}_{self.timeframe}_data_{self.data_hash}.pkl"
         
-        if cache_file.exists():
-            try:
-                print(f"📦 Loading cached data: {cache_file.name}")
-                with open(cache_file, 'rb') as f:
-                    cached_data = pickle.load(f)
+        try:
+            cached_data = self.cache_transport.load_pickle(cache_key)
+            if cached_data is not None:
+                print(f"📦 Loading cached data: {cache_key}")
                 return cached_data['data']
-            except Exception as e:
-                print(f"⚠️  Error loading cached data: {e}")
+        except Exception as e:
+            print(f"⚠️  Error loading cached data: {e}")
         
         return None
     
@@ -206,26 +215,24 @@ class HyperparameterOptimizer:
         if not self.data_hash:
             self.data_hash = self._get_data_hash()
         
-        cache_file = self.cache_dir / f"data_{self.data_hash}.pkl"
+        symbol_id = self._get_symbol_identifier()
+        cache_key = f"cache/{symbol_id}_{self.timeframe}_data_{self.data_hash}.pkl"
         
-        try:
-            cache_data = {
-                'data': data,
-                'timestamp': datetime.now(),
-                'parameters': {
-                    'source': self.data_source,
-                    'symbol': self.symbol,
-                    'timeframe': self.timeframe,
-                    'years': self.years
-                }
+        cache_data = {
+            'data': data,
+            'timestamp': datetime.now(),
+            'parameters': {
+                'source': self.data_source,
+                'symbol': self.symbol,
+                'timeframe': self.timeframe,
+                'years': self.years
             }
-            
-            with open(cache_file, 'wb') as f:
-                pickle.dump(cache_data, f)
-            
-            print(f"💾 Cached data: {cache_file.name}")
-        except Exception as e:
-            print(f"⚠️  Error caching data: {e}")
+        }
+        
+        if self.cache_transport.save_pickle(cache_key, cache_data):
+            print(f"💾 Cached data: {cache_key}")
+        else:
+            print(f"⚠️  Error caching data: {cache_key}")
     
     def _load_market_data(self) -> pd.DataFrame:
         """Load market data with caching"""
@@ -245,7 +252,8 @@ class HyperparameterOptimizer:
             source=self.data_source,
             symbol=self.symbol,
             timeframe=self.timeframe,
-            use_cache=True
+            use_cache=True,
+            cache_transport_type=self.cache_transport_type
         )
         
         self.data = fetcher.fetch(years=self.years)
@@ -266,13 +274,15 @@ class HyperparameterOptimizer:
     def _load_cached_result(self, params: Dict[str, Any]) -> Optional[OptimizationResult]:
         """Load cached optimization result if available"""
         param_hash = self._get_param_hash(params)
-        cache_file = self.cache_dir / f"result_{self.data_hash}_{param_hash}.pkl"
+        symbol_id = self._get_symbol_identifier()
+        cache_key = f"cache/{symbol_id}_{self.timeframe}_result_{self.data_hash}_{param_hash}.pkl"
         
-        if cache_file.exists():
-            try:
-                with open(cache_file, 'rb') as f:
-                    return pickle.load(f)
-            except Exception as e:
+        try:
+            result = self.optimization_transport.load_pickle(cache_key)
+            if result is not None:
+                return result
+        except Exception as e:
+            if self.verbose:
                 print(f"⚠️  Error loading cached result: {e}")
         
         return None
@@ -280,40 +290,36 @@ class HyperparameterOptimizer:
     def _cache_result(self, result: OptimizationResult) -> None:
         """Cache optimization result"""
         param_hash = self._get_param_hash(result.parameters)
-        cache_file = self.cache_dir / f"result_{self.data_hash}_{param_hash}.pkl"
+        symbol_id = self._get_symbol_identifier()
+        cache_key = f"cache/{symbol_id}_{self.timeframe}_result_{self.data_hash}_{param_hash}.pkl"
         
-        try:
-            with open(cache_file, 'wb') as f:
-                pickle.dump(result, f)
-        except Exception as e:
-            print(f"⚠️  Error caching result: {e}")
+        if not self.optimization_transport.save_pickle(cache_key, result):
+            if self.verbose:
+                print(f"⚠️  Error caching result: {cache_key}")
     
     def _setup_result_files(self, optimization_name: str) -> None:
         """Setup CSV result files and progress tracking"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        symbol_id = self._get_symbol_identifier()
         
-        # CSV results file
-        self.results_csv_path = self.results_dir / f"{optimization_name}_{timestamp}.csv"
-        
-        # Progress tracking file
-        self.progress_file_path = self.logs_dir / f"progress_{optimization_name}_{timestamp}.txt"
-        
-        # Best parameters file
-        self.best_params_file_path = self.results_dir / f"best_params_{optimization_name}_{timestamp}.json"
+        # Set transport keys with symbol information
+        self.results_csv_key = f"results/{symbol_id}_{self.timeframe}_{optimization_name}_{timestamp}.csv"
+        self.progress_file_key = f"logs/{symbol_id}_{self.timeframe}_progress_{optimization_name}_{timestamp}.txt"
+        self.best_params_file_key = f"results/{symbol_id}_{self.timeframe}_best_params_{optimization_name}_{timestamp}.json"
         
         # Write CSV header
         header = [
             'timestamp', 'final_pnl', 'total_trades', 'win_rate', 'sharpe_ratio', 
-            'max_drawdown', 'execution_time'
+            'max_drawdown', 'execution_time', 'parameters'
         ]
         
-        # Add parameter columns (will be determined from first result)
-        with open(self.results_csv_path, 'w') as f:
-            f.write(','.join(header) + ',parameters\n')
+        # Save CSV header
+        csv_content = ','.join(header) + '\n'
+        self.optimization_transport.save_text(self.results_csv_key, csv_content)
     
     def _log_result_to_csv(self, result: OptimizationResult) -> None:
         """Log optimization result to CSV"""
-        if not self.results_csv_path:
+        if not self.results_csv_key:
             return
         
         try:
@@ -329,16 +335,20 @@ class HyperparameterOptimizer:
                 str(result.parameters)
             ]
             
-            # Append to CSV
-            with open(self.results_csv_path, 'a') as f:
-                f.write(','.join(map(str, row_data)) + '\n')
+            # Get current CSV content and append new row
+            current_content = self.optimization_transport.load_text(self.results_csv_key) or ""
+            new_row = ','.join(map(str, row_data)) + '\n'
+            updated_content = current_content + new_row
+            
+            self.optimization_transport.save_text(self.results_csv_key, updated_content)
                 
         except Exception as e:
-            print(f"⚠️  Error logging to CSV: {e}")
+            if self.verbose:
+                print(f"⚠️  Error logging to CSV: {e}")
     
     def _update_progress(self, completed: int, total: int, current_result: OptimizationResult) -> None:
         """Update progress file with current status"""
-        if not self.progress_file_path:
+        if not self.progress_file_key:
             return
         
         try:
@@ -364,35 +374,33 @@ Current Best PnL/Drawdown Ratio: {max([r.final_pnl/(r.max_drawdown+0.01) for r i
 Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdown:.1f}%, PnL/DD={(current_result.final_pnl/(current_result.max_drawdown+0.01)):.2f}, Trades={current_result.total_trades}
 """
             
-            with open(self.progress_file_path, 'w') as f:
-                f.write(progress_info)
+            self.optimization_transport.save_text(self.progress_file_key, progress_info)
                 
         except Exception as e:
-            print(f"⚠️  Error updating progress: {e}")
+            if self.verbose:
+                print(f"⚠️  Error updating progress: {e}")
     
     def _plot_equity_curve(self, params: Dict[str, Any], equity_curve: pd.Series, 
                           equity_dates: pd.DatetimeIndex, final_pnl: float) -> None:
         """Plot and save equity curve for a parameter combination"""
+        if not self.plot_equity_curves:
+            return
+            
         try:
-            # Create a filename based on parameters and performance
+            # Create a filename based on symbol, timeframe, parameters and performance
+            symbol_id = self._get_symbol_identifier()
             param_str = "_".join([f"{k}{v}" for k, v in params.items()])
             # Limit filename length and sanitize
-            param_str = param_str[:50].replace('.', '_').replace('-', '_')
+            param_str = param_str[:30].replace('.', '_').replace('-', '_')
             pnl_str = f"PnL{final_pnl:.0f}".replace('-', 'neg')
-            filename = f"equity_{param_str}_{pnl_str}.png"
+            plot_key = f"plots/{symbol_id}_{self.timeframe}_equity_{param_str}_{pnl_str}.png"
             
-            # Create save path
-            save_path = self.plots_dir / filename
-            
-            # Use the existing visualization function
-            plot_equity_curve(
-                equity_curve=equity_curve,
-                equity_dates=equity_dates,
-                save_path=str(save_path)
-            )
+            # Note: For now, equity curves will need to be handled differently with S3
+            # This would require either saving locally first, or implementing binary upload
+            # TODO: Implement plot upload to transport layer
             
             if self.verbose:
-                print(f"📊 Equity curve saved: {filename}")
+                print(f"📊 Equity curve plotting with transport layer not yet implemented")
                 
         except Exception as e:
             if self.verbose:
@@ -400,13 +408,24 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
 
     def _plot_orders(self, params: Dict[str, Any], order_log: list, final_pnl: float) -> None:
         """Plot and save order analysis for a parameter combination"""
+        if not self.plot_orders:
+            return
+            
         try:
-            # Create a filename based on parameters and performance
+            # Create a filename based on symbol, timeframe, parameters and performance
+            symbol_id = self._get_symbol_identifier()
             param_str = "_".join([f"{k}{v}" for k, v in params.items()])
             # Limit filename length and sanitize
-            param_str = param_str[:50].replace('.', '_').replace('-', '_')
+            param_str = param_str[:30].replace('.', '_').replace('-', '_')
             pnl_str = f"PnL{final_pnl:.0f}".replace('-', 'neg')
-            orders_subdir = f"orders_{param_str}_{pnl_str}"
+            orders_subdir = f"{symbol_id}_{self.timeframe}_orders_{param_str}_{pnl_str}"
+            
+            # Note: For now, order plots will need to be handled differently with S3
+            # This would require either saving locally first, or implementing binary upload
+            # TODO: Implement order plot upload to transport layer
+            
+            if self.verbose:
+                print(f"📈 Order plotting with transport layer not yet implemented")
             
             # Create subdirectory for this parameter combination
             orders_run_dir = self.orders_dir / orders_subdir
@@ -435,18 +454,24 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             # Check cache first
             cached_result = self._load_cached_result(params)
             if cached_result is not None:
+                # For cached results, we don't count execution time in averages
                 return cached_result
             
             # Prepare strategy parameters
             strategy_params = self._prepare_strategy_params(params)
             
             # Run backtest with configurable logging
+            backtest_start = time.time()
             equity_curve, equity_dates, trade_log, order_log = run_backtest(
                 data=self.data,
                 strategy_class=MeanReversionStrategy,
                 params=strategy_params,
                 verbose=self.verbose
             )
+            backtest_time = time.time() - backtest_start
+            
+            # Track backtest execution time for averaging
+            self.backtest_times.append(backtest_time)
             
             # Calculate metrics
             metrics = calculate_metrics(trade_log, equity_curve)
@@ -607,7 +632,10 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             
             print(f"\n🔄 [{i}/{len(param_combinations)}] Testing: {params}")
             
+            run_start = time.time()
             result = self._run_single_backtest(params)
+            run_time = time.time() - run_start
+            
             self.results.append(result)
             
             # Log to CSV
@@ -616,7 +644,13 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             # Update progress
             self._update_progress(i, len(param_combinations), result)
             
+            # Calculate average backtest time (excluding cached results)
+            avg_backtest_time = np.mean(self.backtest_times) if self.backtest_times else 0
+            
+            # Print results with timing information
+            cached_marker = " (cached)" if len(self.backtest_times) < i else ""
             print(f"   💰 PnL: ${result.final_pnl:,.2f} | Trades: {result.total_trades} | WinRate: {result.win_rate:.1f}% | Sharpe: {result.sharpe_ratio:.2f}")
+            print(f"   ⏱️  Run time: {run_time:.2f}s | Avg backtest time: {avg_backtest_time:.2f}s{cached_marker}")
     
     def _run_parallel_optimization(self, param_combinations: List, keys: List[str]) -> None:
         """Run optimization in parallel (placeholder - implementation needed)"""
@@ -638,8 +672,7 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
                 'lowest_drawdown': min(self.results, key=lambda x: x.max_drawdown)
             }
             
-            # Save to JSON
-            import json
+            # Prepare best results summary
             best_summary = {}
             for metric_name, result in self.best_results.items():
                 best_summary[metric_name] = {
@@ -651,10 +684,11 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
                     'total_trades': result.total_trades
                 }
             
-            with open(self.best_params_file_path, 'w') as f:
-                json.dump(best_summary, f, indent=2)
-            
-            print(f"💾 Best results saved to: {self.best_params_file_path}")
+            # Save to transport
+            if self.optimization_transport.save_json(self.best_params_file_key, best_summary):
+                print(f"💾 Best results saved to: {self.best_params_file_key}")
+            else:
+                print(f"⚠️  Error saving best results to: {self.best_params_file_key}")
             
         except Exception as e:
             print(f"⚠️  Error saving best results: {e}")
@@ -666,13 +700,19 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             return
         
         total_time = time.time() - self.start_time
+        avg_backtest_time = np.mean(self.backtest_times) if self.backtest_times else 0
+        total_backtests_run = len(self.backtest_times)
+        cached_results = len(self.results) - total_backtests_run
         
         print("\n" + "="*80)
         print("📊 OPTIMIZATION COMPLETE")
         print("="*80)
         print(f"⏱️  Total Time: {total_time/60:.1f} minutes")
+        print(f"⚡ Average Backtest Time: {avg_backtest_time:.2f}s")
         print(f"🔢 Total Tests: {len(self.results):,}")
-        print(f"📈 Results saved to: {self.results_csv_path}")
+        print(f"🆕 New Backtests Run: {total_backtests_run:,}")
+        print(f"� Cached Results Used: {cached_results:,}")
+        print(f"�📈 Results saved to: {self.results_csv_key}")
         
         if self.best_results:
             print(f"\n🏆 BEST RESULTS:")
@@ -742,7 +782,10 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             
             print(f"\n🔄 [{i}/{n_iterations}] Testing: {params}")
             
+            run_start = time.time()
             result = self._run_single_backtest(params)
+            run_time = time.time() - run_start
+            
             self.results.append(result)
             
             # Log to CSV
@@ -751,7 +794,13 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             # Update progress
             self._update_progress(i, n_iterations, result)
             
+            # Calculate average backtest time (excluding cached results)
+            avg_backtest_time = np.mean(self.backtest_times) if self.backtest_times else 0
+            
+            # Print results with timing information
+            cached_marker = " (cached)" if len(self.backtest_times) < i else ""
             print(f"   💰 PnL: ${result.final_pnl:,.2f} | Trades: {result.total_trades} | WinRate: {result.win_rate:.1f}% | Sharpe: {result.sharpe_ratio:.2f}")
+            print(f"   ⏱️  Run time: {run_time:.2f}s | Avg backtest time: {avg_backtest_time:.2f}s{cached_marker}")
         
         # Get the sorting function from objectives
         sort_function = OPTIMIZATION_OBJECTIVES.get(sort_objective, OPTIMIZATION_OBJECTIVES['balanced'])

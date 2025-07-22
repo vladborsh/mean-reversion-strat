@@ -45,7 +45,9 @@ class MeanReversionStrategy(bt.Strategy):
         if hasattr(self.p, 'risk_reward_ratio'):
             risk_config['risk_reward_ratio'] = self.p.risk_reward_ratio
         
-        self.risk_manager = create_risk_manager(risk_config)
+        # Pass quiet parameter based on verbose setting (inverted)
+        quiet = not getattr(self.p, 'verbose', True)
+        self.risk_manager = create_risk_manager(risk_config, quiet=quiet)
         
         # Technical indicators
         self.bb_ma = bt.indicators.SimpleMovingAverage(self.datas[0], period=self.p.bb_window)

@@ -58,6 +58,9 @@ Custom symbol and timeframe:
 Or run directly with podman:
 ```bash
 podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --grid-search focused
+
+# Run focused grid search with S3 transport (no volume mount needed)
+podman run --rm mean-reversion-strategy --grid-search focused --symbol GBPUSD=X --timeframe 5m --cache-transport s3 --log-transport s3
 ```
 
 ## Output Files
@@ -69,6 +72,31 @@ All optimization results are saved to the `optimization` directory, which is mou
 - `optimization/plots`: Generated plots
 - `optimization/logs`: Log files
 - `optimization/orders`: Order information
+
+## Transport Layer Support
+
+The container supports both local and S3 storage backends:
+
+### Local Storage (Default)
+When using local storage, mount the optimization directory as a volume:
+```bash
+podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --quick-test
+```
+
+### S3 Storage
+When using S3 transport, no volume mount is needed as all data is stored in the cloud:
+```bash
+# All data stored in S3 - no volume mount required
+podman run --rm mean-reversion-strategy --grid-search focused --symbol GBPUSD=X --timeframe 5m --cache-transport s3 --log-transport s3
+```
+
+**S3 Benefits:**
+- No local storage requirements
+- Shared access across multiple environments
+- Automatic backup and durability
+- Ideal for CI/CD and cloud deployment
+
+Make sure to configure AWS credentials through environment variables or AWS configuration files when using S3 transport.
 
 ## Note on Volumes
 

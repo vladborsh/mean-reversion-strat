@@ -25,14 +25,23 @@ except ImportError:
 from .data_cache import get_global_cache
 
 class DataFetcher:
-    def __init__(self, source, symbol, timeframe='1h', exchange='binance', api_key=None, use_cache=True):
+    def __init__(self, source, symbol, timeframe='1h', exchange='binance', api_key=None, use_cache=True, cache_transport_type='local'):
         self.source = source.lower()
         self.symbol = symbol
         self.timeframe = timeframe
         self.exchange = exchange
         self.api_key = api_key
         self.use_cache = use_cache
-        self.cache = get_global_cache() if use_cache else None
+        self.cache_transport_type = cache_transport_type
+        
+        # Initialize cache with transport type if caching is enabled
+        if use_cache:
+            from .data_cache import DataCache
+            from .transport_factory import create_cache_transport
+            transport = create_cache_transport(transport_type=cache_transport_type)
+            self.cache = DataCache(transport=transport)
+        else:
+            self.cache = None
         
         # Define provider priorities for different asset types and timeframes
         # Capital.com is now the primary provider for forex and indices

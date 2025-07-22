@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import argparse
 from dotenv import load_dotenv
 import os
 import pandas as pd
@@ -18,6 +20,12 @@ from src.visualization import (
     plot_drawdown,
     save_order_plots
 )
+
+# Store transport types globally so they can be accessed by DataFetcher and other components
+TRANSPORT_CONFIG = {
+    'cache_transport': 'local',
+    'log_transport': 'local'
+}
 
 def generate_visualizations(df, bb, vwap_dict, equity_curve, equity_dates, order_log):
     """Generate and save all strategy visualizations with minimal console output"""
@@ -150,14 +158,55 @@ def run_strategy(df, config_class=None, timeframe='15m'):
 
 # Example usage
 if __name__ == '__main__':
-    print("📈 Fetching EUR/USD data...")
-    # Fetch data with caching disabled
-    # Data will always be fetched fresh from API
-    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='5m', use_cache=False)
-    df = fetcher.fetch(years=1)
+    parser = argparse.ArgumentParser(
+        description='Mean Reversion Strategy Backtesting',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py
+  python main.py --cache-transport s3 --log-transport s3
+  python main.py --cache-transport local --log-transport s3 --symbol GBPUSD=X
+        """
+    )
+    
+    # Transport configuration
+    parser.add_argument('--cache-transport', default='local',
+                       choices=['local', 's3'],
+                       help='Cache transport type (default: local)')
+    parser.add_argument('--log-transport', default='local',
+                       choices=['local', 's3'],
+                       help='Log transport type (default: local)')
+    
+    # Trading parameters
+    parser.add_argument('--symbol', default='EURUSD=X',
+                       help='Trading symbol (default: EURUSD=X)')
+    parser.add_argument('--timeframe', default='15m',
+                       help='Data timeframe (default: 15m)')
+    parser.add_argument('--years', type=int, default=1,
+                       help='Years of historical data (default: 1)')
+    parser.add_argument('--use-cache', action='store_true', default=False,
+                       help='Enable data caching (default: disabled)')
+    
+    args = parser.parse_args()
+    
+    # Update global transport configuration
+    TRANSPORT_CONFIG['cache_transport'] = args.cache_transport
+    TRANSPORT_CONFIG['log_transport'] = args.log_transport
+    
+    print("📈 Fetching data...")
+    print(f"🔧 Cache Transport: {args.cache_transport}")
+    print(f"📊 Log Transport: {args.log_transport}")
+    
+    # Fetch data with specified configuration
+    fetcher = DataFetcher(
+        source='forex', 
+        symbol=args.symbol, 
+        timeframe=args.timeframe, 
+        use_cache=args.use_cache,
+        cache_transport_type=args.cache_transport
+    )
+    df = fetcher.fetch(years=args.years)
     print(f"✅ Data loaded: {len(df)} rows ({df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')})")
-
-    # Cache is disabled - always fetching fresh data
 
     # Run strategy with 1% risk management (default configuration)
     print("\n" + "="*60)
@@ -165,7 +214,7 @@ if __name__ == '__main__':
     print("="*60)
     
     try:
-        equity_curve, trade_log, metrics = run_strategy(df, DEFAULT_CONFIG, timeframe='15m')
+        equity_curve, trade_log, metrics = run_strategy(df, DEFAULT_CONFIG, timeframe=args.timeframe)
         
         print(f"\n{'='*20} FINAL RESULTS {'='*20}")
         print(f"Strategy Performance with 1% Risk per Trade:")
@@ -182,11 +231,14 @@ if __name__ == '__main__':
         import traceback
         traceback.print_exc()
 
-    # Cache is disabled - data is always fetched fresh from API
-    print(f"\n💡 Pro tip: Enable caching (use_cache=True) for faster subsequent runs!")
+    # Display cache information
+    cache_status = "enabled" if args.use_cache else "disabled"
+    print(f"\n💡 Data caching is {cache_status}")
+    if not args.use_cache:
+        print("   To enable caching for faster subsequent runs, use --use-cache")
     
-    # Cache is disabled, but you can re-enable it by setting use_cache=True above
-    # To clear existing cache files if needed, run: python cache_manager.py clear
+    print(f"📁 Cache transport: {args.cache_transport}")
+    print(f"📊 Log transport: {args.log_transport}")
 
     # Hyperparameter optimization example (commented out for now)
     # print("\nRunning hyperparameter optimization...")
