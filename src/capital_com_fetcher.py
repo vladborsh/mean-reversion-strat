@@ -98,6 +98,48 @@ class CapitalComDataFetcher:
             'QQQ': 'USTECH100',
             'DIA': 'US30'
         }
+        
+        # Common cryptocurrency mapping (discovered via API search)
+        self.crypto_mapping = {
+            'BITCOIN=X': 'BTCUSD',
+            'BTC=X': 'BTCUSD', 
+            'BTCUSD=X': 'BTCUSD',
+            'BITCOIN': 'BTCUSD',
+            'BTCUSD': 'BTCUSD',
+            'BTC': 'BTCUSD',
+            'ETHEREUM=X': 'ETHUSD',
+            'ETH=X': 'ETHUSD',
+            'ETHUSD=X': 'ETHUSD',
+            'ETHEREUM': 'ETHUSD',
+            'ETHUSD': 'ETHUSD',
+            'ETH': 'ETHUSD',
+            'LITECOIN=X': 'LTCUSD',
+            'LTC=X': 'LTCUSD',
+            'LITECOIN': 'LTCUSD',
+            'LTCUSD': 'LTCUSD',
+            'LTC': 'LTCUSD',
+            'RIPPLE=X': 'XRPUSD',
+            'XRP=X': 'XRPUSD',
+            'RIPPLE': 'XRPUSD',
+            'XRPUSD': 'XRPUSD',
+            'XRP': 'XRPUSD'
+        }
+        
+        # Common precious metals/commodities mapping (discovered via API search)
+        self.commodities_mapping = {
+            'GOLD=X': 'GOLD',
+            'GC=F': 'GOLD',
+            'XAUUSD': 'GOLD',
+            'XAU_USD': 'GOLD',
+            'GOLD_USD': 'GOLD',
+            'GOLD': 'GOLD',
+            'SILVER=X': 'SILVER',
+            'SI=F': 'SILVER',
+            'XAGUSD': 'SILVER',
+            'XAG_USD': 'SILVER',
+            'SILVER_USD': 'SILVER',
+            'SILVER': 'SILVER'
+        }
     
     def _wait_for_rate_limit(self):
         """Ensure we don't exceed rate limits"""
@@ -197,10 +239,32 @@ class CapitalComDataFetcher:
     
     def _map_symbol(self, symbol: str, asset_type: str) -> str:
         """Map symbol to Capital.com epic format"""
+        # First check if this looks like a crypto symbol regardless of asset_type
+        crypto_indicators = ['BITCOIN', 'BTC', 'ETHEREUM', 'ETH', 'LITECOIN', 'LTC', 'RIPPLE', 'XRP']
+        if any(indicator in symbol.upper() for indicator in crypto_indicators):
+            # Force crypto mapping for obvious crypto symbols
+            mapped = self.crypto_mapping.get(symbol, symbol)
+            if mapped != symbol:
+                print(f"   🔄 Crypto symbol detected and mapped: {symbol} → {mapped}")
+                return mapped
+        
+        # Check if this looks like a precious metals symbol regardless of asset_type
+        metals_indicators = ['GOLD', 'SILVER', 'XAU', 'XAG', 'GC=F', 'SI=F']
+        if any(indicator in symbol.upper() for indicator in metals_indicators):
+            # Force commodities mapping for obvious metals symbols
+            mapped = self.commodities_mapping.get(symbol, symbol)
+            if mapped != symbol:
+                print(f"   🔄 Precious metals symbol detected and mapped: {symbol} → {mapped}")
+                return mapped
+        
         if asset_type == 'forex':
             return self.forex_mapping.get(symbol, symbol)
         elif asset_type == 'indices':
             return self.indices_mapping.get(symbol, symbol)
+        elif asset_type in ['crypto', 'cryptocurrency', 'cryptocurrencies']:
+            return self.crypto_mapping.get(symbol, symbol)
+        elif asset_type in ['commodities', 'commodity', 'metals', 'precious metals']:
+            return self.commodities_mapping.get(symbol, symbol)
         else:
             return symbol
     
@@ -234,6 +298,51 @@ class CapitalComDataFetcher:
             print(f"❌ Failed to get market details for {epic}: {e}")
             return None
     
+    def discover_crypto_symbols(self) -> Dict[str, str]:
+        """
+        Discover available cryptocurrency symbols by searching
+        Returns a mapping of common names to Capital.com epics
+        """
+        crypto_mapping = {}
+        
+        try:
+            # Search for common cryptocurrencies
+            crypto_terms = ['bitcoin', 'ethereum', 'litecoin', 'ripple', 'cardano', 'polkadot']
+            
+            for term in crypto_terms:
+                markets = self.search_markets(term)
+                if markets:
+                    for market in markets:
+                        epic = market.get('epic', '')
+                        name = market.get('instrumentName', '')
+                        inst_type = market.get('instrumentType', '')
+                        
+                        # Focus on cryptocurrency markets
+                        if inst_type == 'CRYPTOCURRENCIES':
+                            # Map common variations
+                            if 'bitcoin' in name.lower() or 'btc' in epic.lower():
+                                crypto_mapping.update({
+                                    'BITCOIN': epic,
+                                    'BTC': epic,
+                                    'BTCUSD': epic,
+                                    'BITCOIN=X': epic,
+                                    'BTC=X': epic
+                                })
+                            elif 'ethereum' in name.lower() or 'eth' in epic.lower():
+                                crypto_mapping.update({
+                                    'ETHEREUM': epic,
+                                    'ETH': epic,
+                                    'ETHUSD': epic,
+                                    'ETHEREUM=X': epic,
+                                    'ETH=X': epic
+                                })
+            
+            return crypto_mapping
+            
+        except Exception as e:
+            print(f"⚠️  Error discovering crypto symbols: {e}")
+            return {}
+    
     def fetch_historical_data(self, symbol: str, asset_type: str, 
                             timeframe: str = '1h', years: int = 3) -> Optional[pd.DataFrame]:
         """
@@ -241,7 +350,7 @@ class CapitalComDataFetcher:
         
         Args:
             symbol: Symbol to fetch (will be mapped to Capital.com epic)
-            asset_type: 'forex' or 'indices'
+            asset_type: 'forex', 'indices', 'crypto', 'cryptocurrency', 'cryptocurrencies', 'commodities', etc.
             timeframe: '5m', '15m', '1h', '4h', '1d'
             years: Number of years of data to fetch
             
@@ -249,9 +358,28 @@ class CapitalComDataFetcher:
             DataFrame with OHLCV data or None if failed
         """
         try:
+            # Auto-detect crypto symbols and override asset_type if needed
+            crypto_indicators = ['BITCOIN', 'BTC', 'ETHEREUM', 'ETH', 'LITECOIN', 'LTC', 'RIPPLE', 'XRP']
+            is_likely_crypto = any(indicator in symbol.upper() for indicator in crypto_indicators)
+            
+            # Auto-detect precious metals symbols and override asset_type if needed
+            metals_indicators = ['GOLD', 'SILVER', 'XAU', 'XAG', 'GC=F', 'SI=F']
+            is_likely_metals = any(indicator in symbol.upper() for indicator in metals_indicators)
+            
+            if is_likely_crypto and asset_type not in ['crypto', 'cryptocurrency', 'cryptocurrencies']:
+                print(f"   🔄 Auto-detected crypto symbol, overriding asset_type: {asset_type} → cryptocurrencies")
+                asset_type = 'cryptocurrencies'
+            elif is_likely_metals and asset_type not in ['commodities', 'commodity', 'metals', 'precious metals']:
+                print(f"   🔄 Auto-detected precious metals symbol, overriding asset_type: {asset_type} → commodities")
+                asset_type = 'commodities'
+            
             # Map symbol to Capital.com format
             epic = self._map_symbol(symbol, asset_type)
             print(f"📊 Fetching {timeframe} {asset_type} data for {symbol} (epic: {epic}) from Capital.com...")
+            
+            # Debug: Show the mapping result
+            if symbol != epic:
+                print(f"   🔄 Symbol mapped: {symbol} → {epic}")
             
             # Show trading hours info
             print(self.get_trading_hours_info())

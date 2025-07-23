@@ -225,7 +225,7 @@ aws batch submit-job \
   --job-queue "mean-reversion-job-queue" \
   --job-definition "mean-reversion-optimization" \
   --container-overrides '{
-    "command": ["--quick-test", "--symbol", "EURUSD=X", "--cache-transport", "s3", "--log-transport", "s3"]
+    "command": ["--grid-search", "focused", "--symbol", "EURUSD=X", "--timeframe", "5m", "--cache-transport", "s3", "--log-transport", "s3", "--quiet"]
   }' \
   --tags '{
     "Project": "MeanReversionStrategy",
