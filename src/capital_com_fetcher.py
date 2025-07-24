@@ -163,24 +163,70 @@ class CapitalComDataFetcher:
         if headers:
             default_headers.update(headers)
             
-        try:
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=default_headers,
-                params=params,
-                json=json_data,
-                timeout=30
-            )
-            response.raise_for_status()
-            return response
-            
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Capital.com API request failed: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                print(f"   Response status: {e.response.status_code}")
-                print(f"   Response text: {e.response.text}")
-            raise
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    headers=default_headers,
+                    params=params,
+                    json=json_data,
+                    timeout=30
+                )
+                
+                # Handle rate limiting
+                if response.status_code == 429:
+                    print(f"⏰ Rate limited, increasing delay and retrying...")
+                    self.min_request_interval *= 1.5  # Increase delay
+                    time.sleep(self.min_request_interval)
+                    retry_count += 1
+                    continue
+                
+                # Handle session expiry
+                if response.status_code == 401 or response.status_code == 403:
+                    print(f"🔐 Session may have expired, attempting to recreate...")
+                    if self.create_session():
+                        # Update headers with new tokens
+                        if 'CST' in default_headers:
+                            default_headers['CST'] = self.cst_token
+                        if 'X-SECURITY-TOKEN' in default_headers:
+                            default_headers['X-SECURITY-TOKEN'] = self.security_token
+                        retry_count += 1
+                        continue
+                
+                response.raise_for_status()
+                return response
+                
+            except requests.exceptions.RequestException as e:
+                if hasattr(e, 'response') and e.response is not None:
+                    status_code = e.response.status_code
+                    response_text = e.response.text
+                    
+                    # Don't retry on certain errors
+                    if status_code == 404:
+                        print(f"❌ Capital.com API request failed: {e}")
+                        print(f"   Response status: {status_code}")
+                        print(f"   Response text: {response_text}")
+                        raise  # Re-raise 404 errors immediately
+                        
+                    # For other errors, print details but continue retrying
+                    print(f"⚠️  Capital.com API request failed (attempt {retry_count + 1}): {e}")
+                    print(f"   Response status: {status_code}")
+                    print(f"   Response text: {response_text}")
+                else:
+                    print(f"⚠️  Capital.com API network error (attempt {retry_count + 1}): {e}")
+                
+                retry_count += 1
+                if retry_count < max_retries:
+                    wait_time = 2 ** retry_count  # Exponential backoff
+                    print(f"   Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ Max retries ({max_retries}) exceeded")
+                    raise
     
     def create_session(self) -> bool:
         """Create trading session and obtain authentication tokens"""
@@ -459,22 +505,54 @@ class CapitalComDataFetcher:
                 
                 print(f"  📦 Fetching chunk: {params['from']} to {params['to']}")
                 
-                response = self._make_request('GET', f'/api/v1/prices/{epic}', 
-                                            headers=headers, params=params)
-                
-                data = response.json()
-                prices = data.get('prices', [])
-                
-                if not prices:
-                    print(f"  ⚠️  No data returned for chunk")
-                    # Move to next valid time instead of breaking
-                    next_time = get_next_valid_time(chunk_end)
-                    # Ensure we're making progress to avoid infinite loop
-                    if next_time <= current_from:
-                        print(f"  🛑 Not making progress, breaking loop")
-                        break
-                    current_from = next_time
-                    continue
+                try:
+                    response = self._make_request('GET', f'/api/v1/prices/{epic}', 
+                                                headers=headers, params=params)
+                    
+                    data = response.json()
+                    prices = data.get('prices', [])
+                    
+                    if not prices:
+                        print(f"  ⚠️  No data returned for chunk - continuing to next chunk")
+                        # Move to next valid time instead of breaking
+                        next_time = get_next_valid_time(chunk_end)
+                        # Ensure we're making progress to avoid infinite loop
+                        if next_time <= current_from:
+                            print(f"  🛑 Not making progress, breaking loop")
+                            break
+                        current_from = next_time
+                        continue
+                        
+                except requests.exceptions.RequestException as e:
+                    # Handle 404 and other API errors for specific chunks
+                    if hasattr(e, 'response') and e.response is not None:
+                        if e.response.status_code == 404:
+                            print(f"  ⚠️  Data not available for chunk ({e.response.status_code}) - skipping to next chunk")
+                            # Try to continue with next chunk instead of failing completely
+                            next_time = get_next_valid_time(chunk_end)
+                            if next_time <= current_from:
+                                print(f"  🛑 Cannot advance further, breaking loop")
+                                break
+                            current_from = next_time
+                            continue
+                        else:
+                            print(f"  ❌ API error for chunk: {e.response.status_code} - {e.response.text}")
+                            # For other errors, try to continue but log the error
+                            next_time = get_next_valid_time(chunk_end)
+                            if next_time <= current_from:
+                                print(f"  🛑 Cannot advance further after error, breaking loop")
+                                break
+                            current_from = next_time
+                            continue
+                    else:
+                        # Network or other errors - try to continue
+                        print(f"  ❌ Network error for chunk: {e}")
+                        next_time = get_next_valid_time(chunk_end)
+                        if next_time <= current_from:
+                            print(f"  🛑 Cannot advance further after network error, breaking loop")
+                            break
+                        current_from = next_time
+                        continue
                 
                 all_data.extend(prices)
                 print(f"  ✅ Retrieved {len(prices)} records")
@@ -525,8 +603,44 @@ class CapitalComDataFetcher:
                 time.sleep(0.2)
             
             if not all_data:
-                print(f"❌ No data retrieved for {epic}")
-                return None
+                print(f"❌ No data retrieved for {epic} in requested date range")
+                
+                # Try fallback: get recent data (last 30 days) if historical data is not available
+                print(f"🔄 Attempting fallback: fetching recent data (last 30 days)")
+                fallback_end = datetime.utcnow()
+                fallback_start = fallback_end - timedelta(days=30)
+                
+                # Adjust to valid trading times
+                fallback_start = get_next_valid_time(fallback_start)
+                if not is_trading_hour(fallback_end):
+                    fallback_end = get_last_valid_time(fallback_end)
+                
+                print(f"📅 Fallback date range: {fallback_start.strftime('%Y-%m-%d %H:%M')} to {fallback_end.strftime('%Y-%m-%d %H:%M')} UTC")
+                
+                try:
+                    params_fallback = {
+                        'resolution': resolution,
+                        'from': fallback_start.strftime('%Y-%m-%dT%H:%M:%S'),
+                        'to': fallback_end.strftime('%Y-%m-%dT%H:%M:%S'),
+                        'max': 1000
+                    }
+                    
+                    response = self._make_request('GET', f'/api/v1/prices/{epic}', 
+                                                headers=headers, params=params_fallback)
+                    
+                    data = response.json()
+                    fallback_prices = data.get('prices', [])
+                    
+                    if fallback_prices:
+                        print(f"✅ Fallback successful: retrieved {len(fallback_prices)} records")
+                        all_data.extend(fallback_prices)
+                    else:
+                        print(f"❌ Fallback also returned no data - {epic} may not support {timeframe} timeframe")
+                        return None
+                        
+                except Exception as fallback_error:
+                    print(f"❌ Fallback failed: {fallback_error}")
+                    return None
             
             # Convert to DataFrame
             df = self._process_price_data(all_data)
