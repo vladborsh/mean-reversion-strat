@@ -135,7 +135,7 @@ Your AWS user/role needs the following managed policies:
 
 1. Go to **Batch Console** → **Job definitions** → **Create**
 2. **General configuration**:
-   - **Name**: `mean-reversion-optimization`
+   - **Name**: `mean-reversion-optimization-fixed`
    - **Platform type**: EC2
 3. **Container configuration**:
    - **Image**: `[YOUR-ACCOUNT-ID].dkr.ecr.[REGION].amazonaws.com/mean-reversion-strategy:latest`
@@ -167,7 +167,7 @@ Your AWS user/role needs the following managed policies:
 
 ### 8.3 Check Job Definition
 1. Go to **Batch Console** → **Job definitions**
-2. Find `mean-reversion-optimization`
+2. Find `mean-reversion-optimization-fixed`
 3. Click on it to see the configuration details
 4. Verify the container image URI is correct
 
@@ -215,79 +215,68 @@ echo "Container image: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/mean-re
 
 ## Submitting Jobs Using AWS CLI
 
+### 🚀 Quick Start with Scripts
+
+For ease of use, we provide ready-to-use bash scripts in the `scripts/` directory.
+
+**📖 For detailed script documentation, see [AWS_BATCH_SCRIPTS.md](AWS_BATCH_SCRIPTS.md)**
+
+```bash
+# View all available scripts and their usage
+./scripts/aws_batch_help.sh
+
+# Submit forex jobs with default settings
+./scripts/submit_forex_jobs.sh
+
+# Submit jobs for all major forex pairs with default settings
+./scripts/submit_forex_jobs.sh
+
+# Monitor job progress
+./scripts/monitor_jobs.sh forex_jobs_*.csv
+```
+
 ### Single Job Submission
 ```bash
 # Submit a test job
 # Note: Since Dockerfile has ENTRYPOINT ["python", "optimize_strategy.py"], 
 # only specify the arguments in the command array
 aws batch submit-job \
-  --job-name "test-optimization-$(date +%Y%m%d-%H%M%S)" \
+  --job-name "test-optimization-EURUSD-$(date +%Y%m%d-%H%M%S)" \
   --job-queue "mean-reversion-job-queue" \
-  --job-definition "mean-reversion-optimization" \
+  --job-definition "mean-reversion-optimization-fixed" \
   --container-overrides '{
     "command": ["--grid-search", "focused", "--symbol", "EURUSD=X", "--timeframe", "5m", "--cache-transport", "s3", "--log-transport", "s3", "--quiet"]
   }' \
   --tags '{
     "Project": "MeanReversionStrategy",
-    "Symbol": "EURUSD=X",
-    "OptimizationType": "quick"
+    "Symbol": "EURUSD=X"
   }'
 ```
 
 ### Submit Multiple Jobs for Different Symbols
 
 #### Forex Major Pairs
-```bash
-# Array of forex symbols
-SYMBOLS=("EURUSD=X" "GBPUSD=X" "USDJPY=X" "AUDUSD=X" "USDCAD=X" "USDCHF=X")
 
-# Submit jobs for each symbol
-for SYMBOL in "${SYMBOLS[@]}"; do
-  CLEAN_SYMBOL=$(echo "$SYMBOL" | sed 's/[^a-zA-Z0-9]/-/g')
-  JOB_NAME="opt-${CLEAN_SYMBOL}-balanced-$(date +%Y%m%d-%H%M%S)"
-  
-  aws batch submit-job \
-    --job-name "$JOB_NAME" \
-    --job-queue "mean-reversion-job-queue" \
-    --job-definition "mean-reversion-optimization" \
-    --container-overrides '{
-      "command": ["--grid-search", "balanced", "--symbol", "'$SYMBOL'", "--timeframe", "15m", "--cache-transport", "s3", "--log-transport", "s3"]
-    }' \
-    --tags '{
-      "Project": "MeanReversionStrategy",
-      "Symbol": "'$SYMBOL'",
-      "OptimizationType": "balanced"
-    }'
-  
-  echo "Submitted job: $JOB_NAME for symbol: $SYMBOL"
-  sleep 1  # Small delay between submissions
-done
+Use the provided script to submit jobs for all major forex pairs:
+
+```bash
+# Submit jobs for all forex major pairs with default settings (5m timeframe, balanced optimization)
+./scripts/submit_forex_jobs.sh
+
+# Submit with custom timeframe and optimization type
+./scripts/submit_forex_jobs.sh 15m focused
+
+# Submit with 1-hour timeframe and risk optimization
+./scripts/submit_forex_jobs.sh 1h risk
 ```
 
-#### Multiple Optimization Types
-```bash
-# Submit different optimization types for EURUSD
-OPTIMIZATION_TYPES=("balanced" "focused" "risk")
+**Script location**: `scripts/submit_forex_jobs.sh`
 
-for OPT_TYPE in "${OPTIMIZATION_TYPES[@]}"; do
-  JOB_NAME="opt-EURUSD-${OPT_TYPE}-$(date +%Y%m%d-%H%M%S)"
-  
-  aws batch submit-job \
-    --job-name "$JOB_NAME" \
-    --job-queue "mean-reversion-job-queue" \
-    --job-definition "mean-reversion-optimization" \
-    --container-overrides '{
-      "command": ["--grid-search", "'$OPT_TYPE'", "--symbol", "EURUSD=X", "--timeframe", "15m", "--cache-transport", "s3", "--log-transport", "s3"]
-    }' \
-    --tags '{
-      "Project": "MeanReversionStrategy",
-      "Symbol": "EURUSD=X",
-      "OptimizationType": "'$OPT_TYPE'"
-    }'
-  
-  echo "Submitted job: $JOB_NAME"
-done
-```
+**Usage**: `./scripts/submit_forex_jobs.sh [timeframe] [optimization_type]`
+
+**Environment variables**:
+- `BATCH_JOB_QUEUE`: Override default job queue (default: mean-reversion-job-queue)
+- `BATCH_JOB_DEFINITION`: Override default job definition (default: mean-reversion-optimization-fixed)
 
 #### Comprehensive Multi-Symbol Batch
 ```bash
@@ -299,7 +288,7 @@ SYMBOLS=("EURUSD=X" "GBPUSD=X" "USDJPY=X" "AUDUSD=X" "BTC/USDT" "ETH/USDT")
 TIMEFRAMES=("15m" "1h")
 OPTIMIZATION_TYPES=("balanced" "focused")
 JOB_QUEUE="mean-reversion-job-queue"
-JOB_DEFINITION="mean-reversion-optimization"
+JOB_DEFINITION="mean-reversion-optimization-fixed"
 
 # Track submitted jobs
 echo "job_id,job_name,symbol,timeframe,optimization_type,submitted_at" > batch_jobs.csv
@@ -344,7 +333,29 @@ echo "All jobs submitted. Tracking saved to batch_jobs.csv"
 
 ## Monitoring Jobs Using AWS CLI
 
-### Check Job Status
+### Quick Monitoring with Script
+
+The easiest way to monitor your submitted jobs is using the provided monitoring script:
+
+```bash
+# Monitor jobs using the tracking file generated by the submission scripts
+./scripts/monitor_jobs.sh forex_jobs_20250724-161151.csv
+
+# The script will show real-time status updates and automatically detect completion
+```
+
+**Script location**: `scripts/monitor_jobs.sh`
+
+**Usage**: `./scripts/monitor_jobs.sh [job_tracking_file.csv]`
+
+**Features**:
+- Real-time status updates every 30 seconds
+- Automatic completion detection
+- Clear display of job counts by status
+- Shows running and failed jobs
+- Auto-stops when all jobs complete
+
+### Manual Job Status Checks
 ```bash
 # List all jobs in the queue
 aws batch list-jobs --job-queue mean-reversion-job-queue

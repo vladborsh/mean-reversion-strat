@@ -13,6 +13,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Caching System](docs/CACHING.md)** - Data caching implementation
 - **[Container Documentation](CONTAINER.md)** - Container usage and deployment
 - **[AWS Batch Setup](docs/AWS_BATCH_SETUP.md)** - AWS Batch configuration and deployment
+- **[AWS Batch Scripts](docs/AWS_BATCH_SCRIPTS.md)** - Ready-to-use job submission and monitoring scripts
 - **[Transport Layer](docs/TRANSPORT_LAYER.md)** - Storage backends and configuration
 
 ## Features
