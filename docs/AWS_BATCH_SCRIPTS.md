@@ -26,128 +26,168 @@ Submits optimization jobs for all major forex pairs.
 ./scripts/submit_forex_jobs.sh 1h risk
 ```
 
-**Symbols covered:** EURUSD=X, GBPUSD=X, USDJPY=X, AUDUSD=X, USDCAD=X, USDCHF=X
+**Symbols covered:** EURUSD=X, GBPUSD=X, USDJPY=X, AUDUSD=X, USDCAD=X, USDCHF=X, NZDUSD=X, EURGBP=X, EURJPY=X, EURCHF=X, GBPJPY=X, BTCUSD=X, ETHUSD=X, GOLD=X, SILVER=X
 
 ---
 
 ### Monitoring Scripts
 
-#### `monitor_jobs.sh`
-Monitors job status in real-time with automatic completion detection.
+#### `monitor_job_progress.py`
+Monitors optimization job progress by reading status files from S3. Shows detailed progress bars and optimization metrics.
 
 **Usage:**
 ```bash
-./scripts/monitor_jobs.sh [job_tracking_file.csv]
-```
-
-**Examples:**
-```bash
-# Monitor specific job batch
-./scripts/monitor_jobs.sh forex_jobs_20250724-161151.csv
-
-# List available tracking files if none specified
-./scripts/monitor_jobs.sh
-```
-
-**Features:**
-- Real-time status updates every 30 seconds
-- Automatic completion detection
-- Clear display of job counts by status
-- Shows running and failed jobs
-- Auto-stops when all jobs complete
-
-#### `list_jobs.sh`
-Lists and finds AWS Batch jobs with filtering options.
-
-**Usage:**
-```bash
-./scripts/list_jobs.sh [options]
-```
-
-**Examples:**
-```bash
-# List recent running jobs
-./scripts/list_jobs.sh --status RUNNING
-
-# Find jobs for specific symbol
-./scripts/list_jobs.sh --symbol "EURUSD=X"
-
-# Show only jobs with logs available
-./scripts/list_jobs.sh --with-logs
-
-# List failed jobs for debugging
-./scripts/list_jobs.sh --status FAILED --recent 5
-```
-
-**Features:**
-- Filter by job status, symbol, timeframe
-- Show logs availability indicator
-- Color-coded output by job status
-- Integration with log monitoring script
-
-#### `monitor_job_logs.sh`
-Monitors job logs in real-time with advanced filtering and following capabilities.
-
-**Usage:**
-```bash
-./scripts/monitor_job_logs.sh [job_id_or_tracking_file] [options]
-```
-
-**Examples:**
-```bash
-# Monitor single job logs
-./scripts/monitor_job_logs.sh abc123-def456-ghi789
-
-# Follow logs in real-time
-./scripts/monitor_job_logs.sh abc123-def456-ghi789 --follow
-
-# Show last 100 lines and follow
-./scripts/monitor_job_logs.sh abc123-def456-ghi789 --tail 100 --follow
-
-# Monitor all jobs from tracking file
-./scripts/monitor_job_logs.sh forex_jobs_20250724-161151.csv --follow
-
-# Filter for errors only
-./scripts/monitor_job_logs.sh abc123-def456-ghi789 --filter "ERROR|FAIL|Exception"
-
-# Show logs from last hour
-./scripts/monitor_job_logs.sh abc123-def456-ghi789 --since 1h
-```
-
-**Features:**
-- Real-time log following (like `tail -f`)
-- Color-coded log output (errors in red, warnings in yellow, etc.)
-- Log filtering with regex patterns
-- Time-based log filtering
-- Support for single jobs or entire job batches
-- Automatic log stream detection
-- Graceful handling of jobs without logs
-
-#### `monitor_job_progress.sh`
-Monitors optimization job progress by reading status files from S3 instead of CloudWatch logs. Shows detailed progress bars and optimization metrics.
-
-**Usage:**
-```bash
-./scripts/monitor_job_progress.sh [job_id_or_tracking_file] [options]
+./scripts/monitor_job_progress.py [job_id_or_tracking_file] [options]
 ```
 
 **Examples:**
 ```bash
 # Monitor single job progress
-./scripts/monitor_job_progress.sh abc123-def456-ghi789
+./scripts/monitor_job_progress.py abc123-def456-ghi789
 
 # Follow progress in real-time
-./scripts/monitor_job_progress.sh abc123-def456-ghi789 --follow
+./scripts/monitor_job_progress.py abc123-def456-ghi789 --follow
 
 # Monitor all jobs from tracking file with progress bars
-./scripts/monitor_job_progress.sh forex_jobs_20250724-161151.csv --follow
+./scripts/monitor_job_progress.py forex_jobs_20250724-161151.csv --follow
 
 # Custom refresh interval (every 10 seconds)
-./scripts/monitor_job_progress.sh forex_jobs_20250724-161151.csv --follow --refresh 10
+./scripts/monitor_job_progress.py forex_jobs_20250724-161151.csv --follow --refresh 10
 
 # Show progress once and exit
-./scripts/monitor_job_progress.sh forex_jobs_20250724-161151.csv --once
+./scripts/monitor_job_progress.py forex_jobs_20250724-161151.csv --once
 ```
+
+**Features:**
+- Real-time status updates via S3 monitoring
+- Progress bars for optimization jobs
+- Color-coded output by job status
+- Detailed metrics display
+- Support for single jobs or entire job batches
+- Automatic refresh capabilities
+
+#### Using AWS CLI for Basic Monitoring
+For basic monitoring, you can use AWS CLI commands directly:
+
+**List jobs by status:**
+```bash
+# List running jobs
+aws batch list-jobs --job-queue mean-reversion-job-queue --job-status RUNNING
+
+# List failed jobs
+aws batch list-jobs --job-queue mean-reversion-job-queue --job-status FAILED
+
+# List completed jobs
+aws batch list-jobs --job-queue mean-reversion-job-queue --job-status SUCCEEDED
+```
+
+**Monitor CloudWatch logs:**
+```bash
+# Tail logs for specific job
+aws logs tail /aws/batch/job --follow
+
+# View logs with time filters
+aws logs tail /aws/batch/job --since 1h
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+Set these environment variables to customize job submission:
+
+```bash
+# Required (if different from defaults)
+export BATCH_JOB_QUEUE="your-queue-name"           # Default: mean-reversion-job-queue
+export BATCH_JOB_DEFINITION="your-job-definition"  # Default: mean-reversion-optimization-fixed
+
+# AWS Configuration (if not using default AWS profile)
+export AWS_PROFILE="your-profile"
+export AWS_REGION="your-region"
+```
+
+### Job Tracking Files
+Job submission scripts create CSV tracking files with format:
+```
+job_id,job_name,symbol,timeframe,optimization_type,submitted_at
+abc123-def456,opt-EURUSD-X-balanced-20250724-161151,EURUSD=X,5m,balanced,2025-07-24T16:11:51Z
+```
+
+These files can be used with monitoring scripts to track job batches.
+
+---
+
+## Quick Start Guide
+
+### 1. Prerequisites
+- AWS CLI configured with appropriate permissions
+- AWS Batch setup completed (see [AWS_BATCH_SETUP.md](AWS_BATCH_SETUP.md))
+- Docker image built and pushed to ECR
+
+### 2. Submit Jobs
+```bash
+# Default submission (5m timeframe, balanced optimization)
+./scripts/submit_forex_jobs.sh
+
+# Custom configuration
+./scripts/submit_forex_jobs.sh 15m focused
+```
+
+### 3. Monitor Progress
+```bash
+# Monitor using the generated tracking file
+./scripts/monitor_job_progress.py forex_jobs_20250724-161151.csv --follow
+
+# Monitor specific job
+./scripts/monitor_job_progress.py abc123-def456-ghi789
+```
+
+### 4. Check Results
+Results are stored in:
+- **S3**: `s3://your-bucket/mean-reversion-strat/optimization/results/`
+- **Local**: `./optimization/results/` (if using local transport)
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Jobs Stay in PENDING Status
+- Check if compute environment is available
+- Verify job queue is active
+- Check AWS service limits
+
+#### Jobs Fail Immediately
+- Verify container image exists in ECR
+- Check IAM permissions for job execution role
+- Review CloudWatch logs for container startup errors
+
+#### No Progress Updates
+- Verify S3 bucket permissions for writing status files
+- Check if transport layer is configured correctly
+- Ensure job container has AWS credentials
+
+### Debugging Commands
+```bash
+# Check job queue status
+aws batch describe-job-queues --job-queues mean-reversion-job-queue
+
+# Check compute environment
+aws batch describe-compute-environments
+
+# View recent job details
+aws batch describe-jobs --jobs <job-id>
+
+# Check CloudWatch logs
+aws logs describe-log-groups --log-group-name-prefix /aws/batch/job
+```
+
+### Getting Help
+- Use `./scripts/aws_batch_help.sh` for quick command reference
+- See [AWS_BATCH_SETUP.md](AWS_BATCH_SETUP.md) for detailed setup instructions
+- Check [CONTAINER.md](../CONTAINER.md) for container-related issues
 
 **Features:**
 - Visual progress bars for each optimization job
@@ -237,8 +277,8 @@ These files are used by the monitoring script and can be analyzed later for job 
    # List running jobs
    ./scripts/list_jobs.sh --status RUNNING
    
-   # Monitor job logs in real-time (for debugging)
-   ./scripts/monitor_job_logs.sh <job-id> --follow
+   # Monitor job progress with detailed tracking
+   ./scripts/monitor_job_progress.py forex_jobs_*.csv --follow
    ```
 
 ## Troubleshooting
