@@ -45,6 +45,7 @@ from src.strategy_config import StrategyConfig
 from src.chart_plotters import plot_equity_curve
 from src.order_visualization import save_order_plots
 from src.transport_factory import create_optimization_transport, create_cache_transport
+from src.order_accumulator import create_order_accumulator
 
 
 @dataclass
@@ -164,8 +165,21 @@ class HyperparameterOptimizer:
         self.cache_transport = create_cache_transport(transport_type=cache_transport_type)
         self.optimization_transport = create_optimization_transport(optimization_dir, transport_type=log_transport_type)
         
+        # Store transport parameters for order accumulator recreation
+        self.log_transport_type = log_transport_type
+        self.optimization_dir = optimization_dir
+        
+        # Initialize order accumulator (will be recreated with optimization type)
+        self.order_accumulator = create_order_accumulator(
+            symbol=symbol,
+            timeframe=timeframe,
+            transport_type=log_transport_type,
+            output_dir=optimization_dir
+        )
+        
         print(f"💾 Cache transport: {type(self.cache_transport).__name__}")
         print(f"📊 Optimization transport: {type(self.optimization_transport).__name__}")
+        print(f"📋 Order accumulator initialized for {symbol}_{timeframe}")
         
         # Initialize components
         self.data = None
@@ -174,6 +188,7 @@ class HyperparameterOptimizer:
         self.best_results = {}
         self.start_time = None
         self.backtest_times = []  # Track individual backtest execution times
+        self.optimization_run_counter = 0  # Track optimization run number
         
         # File paths (now transport keys)
         self.results_csv_key = None
@@ -316,6 +331,31 @@ class HyperparameterOptimizer:
         # Save CSV header
         csv_content = ','.join(header) + '\n'
         self.optimization_transport.save_text(self.results_csv_key, csv_content)
+    
+    def _setup_order_accumulator(self, optimization_type: str) -> None:
+        """Setup order accumulator with optimization type for proper file naming"""
+        from .order_accumulator import create_order_accumulator
+        
+        # Extract optimization type from optimization_name (e.g., "grid_search_focused" -> "focused")
+        # Common patterns: grid_search_focused, grid_search_balanced, random_search, etc.
+        if 'focused' in optimization_type.lower():
+            opt_type = 'focused'
+        elif 'balanced' in optimization_type.lower():
+            opt_type = 'balanced'
+        elif 'risk' in optimization_type.lower():
+            opt_type = 'risk'
+        else:
+            # For other types like "random_search", use the full name
+            opt_type = optimization_type
+        
+        # Recreate order accumulator with optimization type
+        self.order_accumulator = create_order_accumulator(
+            symbol=self.symbol,
+            timeframe=self.timeframe,
+            transport_type=self.log_transport_type,
+            output_dir=self.optimization_dir,
+            optimization_type=opt_type
+        )
     
     def _log_result_to_csv(self, result: OptimizationResult) -> None:
         """Log optimization result to CSV"""
@@ -491,6 +531,16 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             if self.plot_orders and order_log is not None and len(order_log) > 0:
                 self._plot_orders(params, order_log, final_pnl)
             
+            # Accumulate orders for CSV export
+            if order_log is not None and len(order_log) > 0:
+                self.optimization_run_counter += 1
+                self.order_accumulator.add_optimization_run(
+                    run_number=self.optimization_run_counter,
+                    order_log=order_log,
+                    optimization_params=params
+                )
+                # Order accumulator now prints its own message
+            
             # Create result object
             result = OptimizationResult(
                 parameters=params.copy(),
@@ -588,6 +638,9 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
         # Setup result files
         self._setup_result_files(optimization_name)
         
+        # Setup order accumulator with optimization type
+        self._setup_order_accumulator(optimization_name)
+        
         # Generate parameter combinations
         keys, values = zip(*param_grid.items())
         param_combinations = list(itertools.product(*values))
@@ -619,6 +672,9 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
         
         # Save best results
         self._save_best_results()
+        
+        # Save accumulated orders to CSV
+        self._save_orders_to_csv()
         
         # Print summary
         self._print_optimization_summary()
@@ -770,6 +826,9 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
         # Setup result files
         self._setup_result_files(optimization_name)
         
+        # Setup order accumulator with optimization type
+        self._setup_order_accumulator(optimization_name)
+        
         print(f"🔢 Running {n_iterations:,} random parameter combinations")
         print(f"🎯 Optimization objective: {sort_objective}")
         
@@ -811,6 +870,9 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
         # Save best results
         self._save_best_results()
         
+        # Save accumulated orders to CSV
+        self._save_orders_to_csv()
+        
         # Print summary
         self._print_optimization_summary()
         
@@ -833,6 +895,29 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
                     params[param_name] = np.random.uniform(min_val, max_val)
         
         return params
+
+
+    def _save_orders_to_csv(self) -> None:
+        """
+        Print summary of order saving (orders are saved immediately after each run)
+        """
+        try:
+            csv_info = self.order_accumulator.get_csv_info()
+            total_orders = csv_info.get('total_orders', 0)
+            session_orders = csv_info.get('session_orders', 0)
+            
+            if session_orders > 0:
+                print(f"\n📋 Order Summary:")
+                print(f"   📄 File: {csv_info['csv_key']}")
+                print(f"   � Session orders: {session_orders}")
+                print(f"   📊 Total orders in file: {total_orders}")
+                print(f"   🔄 Optimization runs: {csv_info.get('unique_runs', 0)}")
+                print(f"   ✅ Orders saved automatically after each optimization run")
+            else:
+                print(f"\n📋 No orders generated during optimization")
+                
+        except Exception as e:
+            print(f"❌ Error getting order summary: {e}")
 
 
 def main():

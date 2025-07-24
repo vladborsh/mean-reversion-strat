@@ -6,6 +6,7 @@ import os
 import pickle
 import json
 import io
+import pandas as pd
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 import logging
@@ -196,6 +197,47 @@ class S3Transport(TransportInterface):
                 return None
         except Exception as e:
             logger.error(f"Error loading JSON from S3 {key}: {e}")
+            return None
+    
+    def save_csv(self, key: str, data: pd.DataFrame) -> bool:
+        """Save DataFrame as CSV file."""
+        try:
+            csv_buffer = io.StringIO()
+            data.to_csv(csv_buffer, index=False)
+            csv_content = csv_buffer.getvalue()
+            
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=self._get_s3_key(key),
+                Body=csv_content.encode('utf-8'),
+                ContentType='text/csv'
+            )
+            
+            logger.debug(f"Saved CSV to S3: {key}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving CSV to S3 {key}: {e}")
+            return False
+    
+    def load_csv(self, key: str) -> Optional[pd.DataFrame]:
+        """Load CSV data as DataFrame."""
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=self._get_s3_key(key))
+            content = response['Body'].read().decode('utf-8')
+            
+            csv_buffer = io.StringIO(content)
+            data = pd.read_csv(csv_buffer)
+            
+            logger.debug(f"Loaded CSV from S3: {key}")
+            return data
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            else:
+                logger.error(f"Error loading CSV from S3 {key}: {e}")
+                return None
+        except Exception as e:
+            logger.error(f"Error loading CSV from S3 {key}: {e}")
             return None
     
     def delete(self, key: str) -> bool:

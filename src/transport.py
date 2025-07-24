@@ -6,6 +6,7 @@ Provides a unified interface for local filesystem and cloud storage (S3).
 import os
 import pickle
 import json
+import pandas as pd
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
@@ -51,6 +52,16 @@ class TransportInterface(ABC):
     @abstractmethod
     def load_json(self, key: str) -> Optional[Dict[str, Any]]:
         """Load JSON data from key."""
+        pass
+    
+    @abstractmethod
+    def save_csv(self, key: str, data: Any) -> bool:
+        """Save DataFrame as CSV file."""
+        pass
+    
+    @abstractmethod
+    def load_csv(self, key: str) -> Optional[Any]:
+        """Load CSV data as DataFrame."""
         pass
     
     @abstractmethod
@@ -183,6 +194,35 @@ class LocalTransport(TransportInterface):
             return data
         except Exception as e:
             logger.error(f"Error loading JSON from {key}: {e}")
+            return None
+    
+    def save_csv(self, key: str, data: pd.DataFrame) -> bool:
+        """Save DataFrame as CSV file."""
+        try:
+            file_path = self._get_path(key)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            data.to_csv(file_path, index=False)
+            
+            logger.debug(f"Saved CSV to {key}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving CSV to {key}: {e}")
+            return False
+    
+    def load_csv(self, key: str) -> Optional[pd.DataFrame]:
+        """Load CSV data as DataFrame."""
+        try:
+            file_path = self._get_path(key)
+            if not file_path.exists():
+                return None
+                
+            data = pd.read_csv(file_path)
+            
+            logger.debug(f"Loaded CSV from {key}")
+            return data
+        except Exception as e:
+            logger.error(f"Error loading CSV from {key}: {e}")
             return None
     
     def delete(self, key: str) -> bool:
