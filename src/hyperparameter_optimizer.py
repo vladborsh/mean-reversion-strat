@@ -194,6 +194,28 @@ class HyperparameterOptimizer:
         self.results_csv_key = None
         self.progress_file_key = None
         self.best_params_file_key = None
+    
+    @property
+    def results_dir(self) -> str:
+        """
+        Get the results directory path.
+        
+        Returns:
+            str: The directory path where results are stored.
+                 For local transport, returns the base directory.
+                 For S3 transport, returns a descriptive S3 path.
+        """
+        if hasattr(self.optimization_transport, 'base_dir'):
+            # Local transport
+            return str(self.optimization_transport.base_dir)
+        elif hasattr(self.optimization_transport, 'bucket_name'):
+            # S3 transport
+            bucket = self.optimization_transport.bucket_name
+            prefix = getattr(self.optimization_transport, 'prefix', '')
+            return f"s3://{bucket}/{prefix}"
+        else:
+            # Fallback
+            return "optimization/"
         
     def _get_data_hash(self) -> str:
         """Generate hash for data parameters"""
