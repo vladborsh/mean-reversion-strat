@@ -96,6 +96,18 @@ class MeanReversionStrategy(bt.Strategy):
         })
         self.order_lifetime_minutes = order_lifetime_dict.get(timeframe, order_lifetime_dict.get('default', 720))
 
+    def _is_trading_hours(self):
+        """
+        Check if current time is within trading hours (6 UTC - 17 UTC).
+        Returns True if within trading hours, False otherwise.
+        """
+        current_time = self.datas[0].datetime.time(0)
+        # Get UTC hour (assuming data is already in UTC)
+        current_hour = current_time.hour
+        
+        # Trading hours: 6 UTC to 17 UTC (6:00 - 17:00)
+        return 6 <= current_hour < 17
+
     def next(self):
         # Track portfolio value for equity curve (do this first)
         self._track_portfolio_value()
@@ -118,6 +130,14 @@ class MeanReversionStrategy(bt.Strategy):
                 return
         
         if not self.position:
+            # Check if we're within trading hours (6 UTC - 17 UTC)
+            if not self._is_trading_hours():
+                # Optional verbose logging for debugging (uncomment if needed)
+                # if getattr(self.p, 'verbose', True):
+                #     current_time = self.datas[0].datetime.time(0)
+                #     print(f"TRADING BLOCKED - Outside hours (6-17 UTC). Current: {current_time.hour:02d}:{current_time.minute:02d}")
+                return  # Skip trading outside of allowed hours
+            
             # Long signal - Buy when price breaks below both bands and shows reversal
             if (self.dataclose[0] < self.bb_lower[0] and 
                 self.dataclose[0] < self.vwap_lower[0]):
