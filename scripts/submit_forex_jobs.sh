@@ -9,7 +9,7 @@ set -e
 JOB_QUEUE="${BATCH_JOB_QUEUE:-mean-reversion-job-queue}"
 JOB_DEFINITION="${BATCH_JOB_DEFINITION:-mean-reversion-optimization-fixed}"
 TIMEFRAME="${1:-5m}"
-OPTIMIZATION_TYPE="${2:-balanced}"
+OPTIMIZATION_TYPE="${2:-focused}"
 
 # Array of forex symbols
 SYMBOLS=("EURUSD=X" "GBPUSD=X" "USDJPY=X" "AUDUSD=X" "USDCAD=X" "USDCHF=X" "NZDUSD=X" "EURGBP=X" "EURJPY=X" "EURCHF=X" "GBPJPY=X" "BTCUSD=X" "ETHUSD=X" "GOLD=X" "SILVER=X")

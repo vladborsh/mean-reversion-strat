@@ -358,24 +358,24 @@ class AWSBatchMonitor:
         s3_symbol = job_info.symbol.replace('=X', 'X')
         
         # Try different prefix patterns - including the actual S3 naming convention
-        # The S3 files use patterns like: EURUSDX_5m_progress_grid_search_balanced_timestamp.txt
+        # The S3 files use patterns like: EURUSDX_5m_progress_grid_search_focused_timestamp.txt
         prefixes = [
             # Try with common timeframes and 'balanced' optimization type
-            f"{s3_symbol}_5m_progress_grid_search_balanced_",
-            f"{s3_symbol}_1h_progress_grid_search_balanced_",
-            f"{s3_symbol}_4h_progress_grid_search_balanced_",
-            f"{s3_symbol}_1d_progress_grid_search_balanced_",
+            f"{s3_symbol}_5m_progress_grid_search_focused_",
+            f"{s3_symbol}_1h_progress_grid_search_focused_",
+            f"{s3_symbol}_4h_progress_grid_search_focused_",
+            f"{s3_symbol}_1d_progress_grid_search_focused_",
             # Try with other common optimization types
             f"{s3_symbol}_5m_progress_grid_search_{job_info.optimization_type}_",
             f"{s3_symbol}_1h_progress_grid_search_{job_info.optimization_type}_",
             f"{s3_symbol}_4h_progress_grid_search_{job_info.optimization_type}_",
             f"{s3_symbol}_1d_progress_grid_search_{job_info.optimization_type}_",
             # Original patterns (in case timeframe extraction works correctly)
-            f"{s3_symbol}_{job_info.timeframe}_progress_grid_search_balanced_",
+            f"{s3_symbol}_{job_info.timeframe}_progress_grid_search_focused_",
             f"{s3_symbol}_{job_info.timeframe}_progress_grid_search_{job_info.optimization_type}_",
             f"{s3_symbol}_{job_info.timeframe}_progress_",
             # Broader patterns
-            f"{s3_symbol}_progress_grid_search_balanced_",
+            f"{s3_symbol}_progress_grid_search_focused_",
             f"{s3_symbol}_progress_grid_search_{job_info.optimization_type}_",
             f"{s3_symbol}_progress_",
             # Job ID based patterns
