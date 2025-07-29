@@ -579,7 +579,7 @@ class AWSBatchMonitor:
             # Format symbol (truncate if too long)
             symbol = job_status.info.symbol.replace('=X', '')[:10]
             
-            # Format status with color
+            # Format status with color (fixed width: 7 chars)
             if job_status.status == "RUNNING":
                 status_colored = f"{Colors.YELLOW}RUNNING{Colors.NC}"
             elif job_status.status == "SUCCEEDED":
@@ -591,53 +591,58 @@ class AWSBatchMonitor:
             else:
                 status_colored = f"{Colors.PURPLE}{job_status.status[:7]:<7}{Colors.NC}"
             
-            # Format progress
+            # Format progress (fixed width: 43 chars total)
             if job_status.status in ["RUNNING", "SUCCEEDED"] and job_status.total > 0:
-                # Create compact progress bar (40 chars)
-                progress_bar = ProgressBar.draw(job_status.completed, job_status.total, 33, False)
-                progress_text = f"{progress_bar} {job_status.percentage:5.1f}%"
+                # Create compact progress bar (30 chars) + percentage 
+                progress_bar = ProgressBar.draw(job_status.completed, job_status.total, 30, False)
+                percentage_str = f" {job_status.percentage:5.1f}%"
+                progress_text = f"{progress_bar}{percentage_str}"
+                # Calculate visible length (excluding color codes) and pad accordingly
+                visible_length = len(re.sub(r'\x1b\[[0-9;]*m', '', progress_text))
+                padding_needed = max(0, 43 - visible_length)
+                progress_display = progress_text + " " * padding_needed
             elif job_status.status == "RUNNING":
-                progress_text = f"{Colors.GRAY}{'Starting/No data yet':<43}{Colors.NC}"
+                text = f"{Colors.GRAY}Starting/No data yet{Colors.NC}"
+                visible_length = len("Starting/No data yet")
+                padding_needed = max(0, 43 - visible_length)
+                progress_display = text + " " * padding_needed
             else:
-                progress_text = f"{Colors.GRAY}{'N/A':<43}{Colors.NC}"
+                text = f"{Colors.GRAY}N/A{Colors.NC}"
+                visible_length = len("N/A")
+                padding_needed = max(0, 43 - visible_length)
+                progress_display = text + " " * padding_needed
             
-            # Format best PnL
+            # Format best PnL (fixed width: 14 chars)
             if job_status.current_best_pnl != "N/A" and job_status.current_best_pnl.strip():
-                pnl_text = f"{Colors.GREEN}{job_status.current_best_pnl[:14]:<14}{Colors.NC}"
+                pnl_text = f"{Colors.GREEN}{job_status.current_best_pnl[:14]}{Colors.NC}"
+                visible_length = len(job_status.current_best_pnl[:14])
+                padding_needed = max(0, 14 - visible_length)
+                pnl_display = pnl_text + " " * padding_needed
             else:
-                pnl_text = f"{Colors.GRAY}{'N/A':<14}{Colors.NC}"
+                text = f"{Colors.GRAY}N/A{Colors.NC}"
+                visible_length = len("N/A")
+                padding_needed = max(0, 14 - visible_length)
+                pnl_display = text + " " * padding_needed
             
-            # Format start time from creation timestamp
+            # Format start time (fixed width: 11 chars)
             if job_status.created_at > 0:
                 start_time_dt = datetime.fromtimestamp(job_status.created_at / 1000)
-                start_time = f"{Colors.GRAY}{start_time_dt.strftime('%m-%d %H:%M'):<11}{Colors.NC}"
+                time_str = start_time_dt.strftime('%m-%d %H:%M')
+                start_display = f"{Colors.GRAY}{time_str}{Colors.NC}"
+                visible_length = len(time_str)
+                padding_needed = max(0, 11 - visible_length)
+                start_display = start_display + " " * padding_needed
             else:
-                start_time = f"{Colors.GRAY}{'Unknown':<11}{Colors.NC}"
+                text = f"{Colors.GRAY}Unknown{Colors.NC}"
+                visible_length = len("Unknown")
+                padding_needed = max(0, 11 - visible_length)
+                start_display = text + " " * padding_needed
             
-            # Print table row
-            print(f"│{i:3d} │ {Colors.BOLD}{symbol:<10}{Colors.NC} │ {status_colored} │ {progress_text} │ {pnl_text} │ {start_time} │")
+            # Print table row with exact spacing
+            print(f"│{i:3d} │ {Colors.BOLD}{symbol:<10}{Colors.NC} │ {status_colored} │ {progress_display} │ {pnl_display} │ {start_display} │")
         
         # Table footer
         print(f"{Colors.BOLD}└────┴────────────┴─────────┴─────────────────────────────────────────────┴────────────────┴─────────────┘{Colors.NC}")
-        print()
-        
-        # Show summary
-        print(f"{Colors.BOLD}Summary:{Colors.NC}")
-        print(f"  {Colors.GREEN}✅ Completed: {status_counts['SUCCEEDED']}{Colors.NC}")
-        print(f"  {Colors.YELLOW}🔄 Running: {status_counts['RUNNING']}{Colors.NC}")
-        print(f"  {Colors.GRAY}⏳ Pending: {status_counts['PENDING']}{Colors.NC}")
-        print(f"  {Colors.RED}❌ Failed: {status_counts['FAILED']}{Colors.NC}")
-        if status_counts['OTHER'] > 0:
-            print(f"  {Colors.PURPLE}⚠️  Other: {status_counts['OTHER']}{Colors.NC}")
-        
-        # Show overall progress
-        if total_with_progress > 0:
-            avg_progress = total_progress_sum / total_with_progress
-            print()
-            print(f"{Colors.BOLD}Overall Progress:{Colors.NC}")
-            # Create overall progress bar
-            overall_bar = ProgressBar.draw(int(avg_progress), 100, 50, True)
-            print(f"  {overall_bar}")
     
     def monitor_queue_jobs(self, follow: bool = False, refresh_interval: int = 30, active_only: bool = False):
         """Monitor progress of jobs from the AWS Batch queue."""

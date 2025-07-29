@@ -106,7 +106,10 @@ export CAPITAL_COM_DEMO="true"  # Use demo environment (set to 'false' for live)
 ## Quick Start
 
 ```bash
-# Run the main strategy with default parameters
+# Run with optimized configuration (recommended)
+python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
+
+# Run the main strategy with default parameters (fallback)
 python main.py
 
 # Basic optimization with balanced objective
@@ -169,19 +172,33 @@ All CLI tools now support transport configuration for cache and logs. Use `--cac
 
 ### Strategy Backtesting
 
+The main strategy now supports using **pre-optimized configurations** from the results folder, or falling back to default settings:
+
 ```bash
-# Basic strategy run with local storage
-python main.py
+# Use optimized configurations based on preference
+python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
+python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl  
+python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
 
 # Run with S3 storage for cache and logs
-python main.py --cache-transport s3 --log-transport s3
+python main.py --symbol EURGBP=X --timeframe 5m --preference balanced --cache-transport s3 --log-transport s3
 
 # Mixed storage: local cache, S3 logs
-python main.py --cache-transport local --log-transport s3
+python main.py --symbol NZDUSD=X --timeframe 5m --preference drawdown --cache-transport local --log-transport s3
 
-# Custom symbol and timeframe
-python main.py --symbol GBPUSD=X --timeframe 1h --cache-transport s3
+# Fallback to default config if optimized config not found
+python main.py --symbol BTCUSD=X --timeframe 15m --preference balanced
 ```
+
+**New Arguments:**
+- `--preference`: Strategy optimization preference (`balanced`, `pnl`, `drawdown`)
+  - `balanced`: Best overall risk-adjusted performance
+  - `pnl`: Maximum profit potential
+  - `drawdown`: Minimum maximum drawdown
+- `--symbol`: Trading symbol (e.g., `EURUSD=X`, `AUDUSD=X`, `GBPUSD=X`)
+- `--timeframe`: Data timeframe (`5m`, `15m`, `1h`)
+
+The script automatically loads optimized hyperparameters from the `results/` folder based on your symbol, timeframe, and preference. If no optimized configuration is found, it falls back to default settings.
 
 ### Strategy Optimization
 

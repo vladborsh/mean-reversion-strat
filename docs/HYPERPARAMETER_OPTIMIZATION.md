@@ -12,10 +12,31 @@ This document provides a comprehensive guide to the hyperparameter optimization 
 ✅ **Predefined Configurations** - Ready-to-use parameter grids for different scenarios  
 ✅ **Best Results Tracking** - Track best results by multiple objectives (PnL, Sharpe, Win Rate, etc.)  
 ✅ **Resume Capability** - Resume interrupted optimizations using cached results  
+✅ **🆕 Automated Configuration Loading** - Use optimized results directly in main.py without manual parameter updates
+
+## Optimization Workflow
+
+1. **Run Optimization**: Use `optimize_strategy.py` to generate optimized configurations
+2. **Review Results**: Check `results/` folder for generated configuration files
+3. **Apply Configurations**: Use `main.py` with `--preference` to load optimized settings automatically
+4. **Compare Performance**: See expected vs. actual performance metrics  
 
 ## Quick Start
 
-### 1. Command Line Usage
+### 1. Using Pre-Optimized Configurations (Recommended)
+
+For immediate use with optimized parameters:
+
+```bash
+# Use optimized configurations from results folder
+python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
+python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl
+python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+```
+
+### 2. Running New Optimizations
+
+For creating new optimized configurations:
 
 ```bash
 # Quick test (4-16 parameter combinations)
@@ -40,7 +61,7 @@ python optimize_strategy.py --grid-search focused --symbol GBPUSD=X --timeframe 
 python optimize_strategy.py --grid-search focused --sort-objective max_sharpe
 ```
 
-### 2. Python API Usage
+### 3. Python API Usage
 
 ```python
 from src.hyperparameter_optimizer import HyperparameterOptimizer
@@ -378,6 +399,67 @@ StrategyConfig.RISK_MANAGEMENT['risk_per_position_pct'] = best_params['risk_per_
 # Run main strategy with optimized parameters
 python main.py
 ```
+
+## Using Optimized Configurations
+
+After running optimizations, the system generates configuration files in the `results/` folder that can be automatically loaded by `main.py`. This eliminates the need for manual parameter updates.
+
+### Automated Configuration Loading
+
+The main strategy script now supports automatic loading of optimized configurations:
+
+```bash
+# Use optimized configurations from results folder
+python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
+python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl
+python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+```
+
+### Configuration Selection Types
+
+The `--preference` parameter determines which optimization objective to use:
+
+1. **`balanced`**: Best risk-adjusted performance
+   - Optimizes for balanced PnL vs. drawdown
+   - Uses results from `results/best_configs_balanced.json`
+   - Recommended for most traders
+
+2. **`pnl`**: Maximum profit potential
+   - Optimizes for highest final PnL
+   - Uses results from `results/best_configs_final_pnl.json`
+   - Higher risk tolerance required
+
+3. **`drawdown`**: Minimum maximum drawdown
+   - Optimizes for lowest maximum drawdown
+   - Uses results from `results/best_configs_max_drawdown.json`
+   - Most conservative approach
+
+### Automatic Fallback
+
+If no optimized configuration is found for your symbol/timeframe combination, the script automatically falls back to default configuration settings.
+
+### Available Optimized Configurations
+
+Based on the current results folder, optimized configurations are available for:
+
+**Timeframes**: `5m` (primary), some `15m` and `1h`
+
+**Assets**:
+- **Forex**: EURUSD=X, AUDUSD=X, GBPUSD=X, EURGBP=X, EURJPY=X, NZDUSD=X, USDCAD=X, USDCHF=X, USDJPY=X, EURCHF=X, GBPJPY=X
+- **Crypto**: BTCUSD=X, ETHUSD=X  
+- **Commodities**: GOLD=X, SILVER=X
+
+### Configuration Structure
+
+Each optimized configuration includes:
+- **Bollinger Bands**: Window and standard deviation
+- **VWAP Bands**: Window and standard deviation  
+- **ATR**: Period for volatility calculation
+- **Risk Management**: Position size, stop loss, and risk/reward ratio
+- **Strategy Behavior**: Reversal requirements and regime filtering
+- **Performance Metrics**: Expected results from optimization
+
+This allows you to compare expected optimization results with actual backtest performance, ensuring configuration consistency.
 
 ## Future Enhancements
 

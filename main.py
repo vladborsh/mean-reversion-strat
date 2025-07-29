@@ -3,6 +3,8 @@ import argparse
 from dotenv import load_dotenv
 import os
 import pandas as pd
+import json
+from typing import Dict, Any, Optional
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,6 +28,100 @@ TRANSPORT_CONFIG = {
     'cache_transport': 'local',
     'log_transport': 'local'
 }
+
+
+def load_config_from_results(symbol: str, timeframe: str, preference: str) -> Optional[Dict[str, Any]]:
+    """
+    Load strategy configuration from results folder based on symbol, timeframe and preference.
+    
+    Args:
+        symbol: Trading symbol (e.g., 'EURUSD=X', 'AUDUSD=X')
+        timeframe: Trading timeframe (e.g., '5m', '15m')
+        preference: Optimization preference ('balanced', 'pnl', 'drawdown')
+    
+    Returns:
+        Configuration dictionary or None if not found
+    """
+    # Convert symbol format: EURUSD=X -> EURUSDX
+    symbol_key = symbol.replace('=', '')
+    config_key = f"{symbol_key}_{timeframe}"
+    
+    # Map preference to config file
+    preference_map = {
+        'balanced': 'best_configs_balanced.json',
+        'pnl': 'best_configs_final_pnl.json', 
+        'drawdown': 'best_configs_max_drawdown.json'
+    }
+    
+    if preference not in preference_map:
+        print(f"❌ Invalid preference '{preference}'. Available: {list(preference_map.keys())}")
+        return None
+    
+    config_file = preference_map[preference]
+    config_path = os.path.join(os.path.dirname(__file__), 'results', config_file)
+    
+    if not os.path.exists(config_path):
+        print(f"❌ Configuration file not found: {config_path}")
+        return None
+    
+    try:
+        with open(config_path, 'r') as f:
+            configs = json.load(f)
+        
+        if config_key not in configs:
+            print(f"❌ Configuration not found for {config_key}")
+            print(f"Available configurations: {list(configs.keys())}")
+            return None
+        
+        config = configs[config_key]
+        print(f"✅ Loaded {preference} configuration for {symbol} {timeframe}")
+        print(f"   Final PnL: ${config['PERFORMANCE_METRICS']['final_pnl']:,.2f}")
+        print(f"   Win Rate: {config['PERFORMANCE_METRICS']['win_rate']:.1f}%")
+        print(f"   Max Drawdown: {config['PERFORMANCE_METRICS']['max_drawdown']:.1f}%")
+        print(f"   Sharpe Ratio: {config['PERFORMANCE_METRICS']['sharpe_ratio']:.2f}")
+        
+        return config
+        
+    except Exception as e:
+        print(f"❌ Error loading configuration: {e}")
+        return None
+
+
+def create_custom_config_class(config_dict: Dict[str, Any]):
+    """
+    Create a custom configuration class from loaded config dictionary.
+    """
+    class CustomConfig:
+        @staticmethod
+        def get_backtrader_params():
+            bb_config = config_dict['BOLLINGER_BANDS']
+            vwap_config = config_dict['VWAP_BANDS']
+            atr_config = config_dict['ATR']
+            strategy_config = config_dict['STRATEGY_BEHAVIOR']
+            
+            return {
+                'bb_window': bb_config['window'],
+                'bb_std': bb_config['std_dev'],
+                'vwap_window': vwap_config['window'],
+                'vwap_std': vwap_config['std_dev'],
+                'vwap_anchor': 'day',  # Default anchor
+                'atr_period': atr_config['period'],
+                'require_reversal': strategy_config['require_reversal'],
+                'regime_min_score': strategy_config['regime_min_score'],
+                'regime_enabled': True
+            }
+        
+        @staticmethod
+        def get_risk_config():
+            risk_config = config_dict['RISK_MANAGEMENT']
+            return {
+                'risk_per_position_pct': risk_config['risk_per_position_pct'],
+                'stop_loss_atr_multiplier': risk_config['stop_loss_atr_multiplier'],
+                'risk_reward_ratio': risk_config['risk_reward_ratio'],
+                'leverage': 100.0  # Default forex leverage
+            }
+    
+    return CustomConfig
 
 def generate_visualizations(df, bb, vwap_dict, equity_curve, equity_dates, order_log):
     """Generate and save all strategy visualizations with minimal console output"""
@@ -105,8 +201,15 @@ def run_strategy(df, config_class=None, timeframe='15m'):
     # Add timeframe to parameters for order lifetime calculation
     params['timeframe'] = timeframe
     
-    print(f"\n=== RUNNING STRATEGY: {config_class.__name__.upper()} ===")
+    config_name = getattr(config_class, '__name__', 'CUSTOM')
+    print(f"\n=== RUNNING STRATEGY: {config_name.upper()} ===")
     print(f"⏱️  Timeframe: {timeframe} | Risk: {risk_config['risk_per_position_pct']}% | Leverage: {risk_config.get('leverage', 100.0)}:1")
+    
+    # Print strategy parameters
+    print(f"📊 Bollinger Bands: {params['bb_window']} period, {params['bb_std']} std dev")
+    print(f"📈 VWAP Bands: {params['vwap_window']} period, {params['vwap_std']} std dev")
+    print(f"🎯 Risk Management: {risk_config['stop_loss_atr_multiplier']}x ATR stop, 1:{risk_config['risk_reward_ratio']} R:R")
+    print(f"🔄 Strategy: Reversal required: {params.get('require_reversal', False)}, Regime score: {params.get('regime_min_score', 60)}")
     
     # Calculate indicators
     bb_window = params['bb_window']
@@ -159,15 +262,29 @@ def run_strategy(df, config_class=None, timeframe='15m'):
 # Example usage
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Mean Reversion Strategy Backtesting',
+        description='Mean Reversion Strategy Backtesting with Optimized Configurations',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py
-  python main.py --cache-transport s3 --log-transport s3
-  python main.py --cache-transport local --log-transport s3 --symbol GBPUSD=X
+  # Use optimized configs from results folder
+  python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
+  python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl
+  python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+  
+  # Use default configuration (fallback)
+  python main.py --symbol BTCUSD=X --timeframe 15m
         """
     )
+    
+    # Strategy configuration parameters
+    parser.add_argument('--symbol', default='EURUSD=X',
+                       help='Trading symbol (default: EURUSD=X)')
+    parser.add_argument('--timeframe', default='5m',
+                       choices=['5m', '15m', '1h'],
+                       help='Data timeframe (default: 5m)')
+    parser.add_argument('--preference', default='balanced',
+                       choices=['balanced', 'pnl', 'drawdown'],
+                       help='Strategy optimization preference (default: balanced)')
     
     # Transport configuration
     parser.add_argument('--cache-transport', default='local',
@@ -177,11 +294,7 @@ Examples:
                        choices=['local', 's3'],
                        help='Log transport type (default: local)')
     
-    # Trading parameters
-    parser.add_argument('--symbol', default='EURUSD=X',
-                       help='Trading symbol (default: EURUSD=X)')
-    parser.add_argument('--timeframe', default='15m',
-                       help='Data timeframe (default: 15m)')
+    # Data parameters
     parser.add_argument('--years', type=int, default=1,
                        help='Years of historical data (default: 1)')
     parser.add_argument('--use-cache', action='store_true', default=False,
@@ -193,9 +306,28 @@ Examples:
     TRANSPORT_CONFIG['cache_transport'] = args.cache_transport
     TRANSPORT_CONFIG['log_transport'] = args.log_transport
     
-    print("📈 Fetching data...")
+    print("� MEAN REVERSION STRATEGY WITH OPTIMIZED CONFIGURATIONS")
+    print("="*70)
+    print(f"📊 Symbol: {args.symbol}")
+    print(f"⏱️  Timeframe: {args.timeframe}")
+    print(f"🎯 Preference: {args.preference}")
     print(f"🔧 Cache Transport: {args.cache_transport}")
     print(f"📊 Log Transport: {args.log_transport}")
+    print("="*70)
+    
+    # Try to load optimized configuration
+    config_dict = load_config_from_results(args.symbol, args.timeframe, args.preference)
+    
+    if config_dict:
+        # Use optimized configuration
+        config_class = create_custom_config_class(config_dict)
+        print(f"\n🎯 Using OPTIMIZED {args.preference.upper()} configuration")
+    else:
+        # Fallback to default configuration
+        config_class = DEFAULT_CONFIG
+        print(f"\n⚠️  Falling back to DEFAULT configuration")
+    
+    print("\n📈 Fetching data...")
     
     # Fetch data with specified configuration
     fetcher = DataFetcher(
@@ -208,23 +340,34 @@ Examples:
     df = fetcher.fetch(years=args.years)
     print(f"✅ Data loaded: {len(df)} rows ({df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')})")
 
-    # Run strategy with 1% risk management (default configuration)
-    print("\n" + "="*60)
-    print("🎯 MEAN REVERSION STRATEGY - 1% RISK MANAGEMENT")
-    print("="*60)
-    
+    # Run strategy with loaded configuration
     try:
-        equity_curve, trade_log, metrics = run_strategy(df, DEFAULT_CONFIG, timeframe=args.timeframe)
+        equity_curve, trade_log, metrics = run_strategy(df, config_class, timeframe=args.timeframe)
         
-        print(f"\n{'='*20} FINAL RESULTS {'='*20}")
-        print(f"Strategy Performance with 1% Risk per Trade:")
-        print(f"- Win Rate: {metrics.get('win_rate', 0):.2%}")
-        print(f"- Total Return: {metrics.get('total_return', 0):.2%}")
-        print(f"- Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}")
-        print(f"- Maximum Drawdown: {metrics.get('max_drawdown', 0):.2%}")
-        print(f"- Average Return per Trade: ${metrics.get('avg_return_per_trade', 0):.2f}")
-        print(f"- Volatility: {metrics.get('volatility', 0):.2%}")
-        print(f"- Total Trades: {len([t for t in trade_log if t.get('type') == 'exit'])}")
+        print(f"\n{'='*25} FINAL RESULTS {'='*25}")
+        if config_dict:
+            expected_metrics = config_dict['PERFORMANCE_METRICS']
+            print(f"📊 EXPECTED vs ACTUAL Performance:")
+            print(f"   Expected PnL: ${expected_metrics['final_pnl']:,.2f}")
+            print(f"   Expected Win Rate: {expected_metrics['win_rate']:.1f}%")
+            print(f"   Expected Sharpe: {expected_metrics['sharpe_ratio']:.2f}")
+            print(f"   Expected Max DD: {expected_metrics['max_drawdown']:.1f}%")
+            print(f"   Expected Trades: {expected_metrics['total_trades']}")
+            print("-" * 60)
+        
+        final_balance = equity_curve[-1] if equity_curve else 0
+        initial_balance = equity_curve[0] if equity_curve else 0
+        actual_pnl = final_balance - initial_balance
+        
+        print(f"📈 ACTUAL Performance:")
+        print(f"   Final Balance: ${final_balance:,.2f}")
+        print(f"   Actual PnL: ${actual_pnl:+,.2f}")
+        print(f"   Win Rate: {metrics.get('win_rate', 0):.1f}%")
+        print(f"   Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}")
+        print(f"   Max Drawdown: {metrics.get('max_drawdown', 0):.1f}%")
+        print(f"   Total Trades: {len([t for t in trade_log if t.get('type') == 'exit'])}")
+        print(f"   Avg Return per Trade: ${metrics.get('avg_return_per_trade', 0):.2f}")
+        print(f"   Volatility: {metrics.get('volatility', 0):.1f}%")
         
     except Exception as e:
         print(f"❌ Error running strategy: {e}")
@@ -239,16 +382,3 @@ Examples:
     
     print(f"📁 Cache transport: {args.cache_transport}")
     print(f"📊 Log transport: {args.log_transport}")
-
-    # Hyperparameter optimization example (commented out for now)
-    # print("\nRunning hyperparameter optimization...")
-    # param_grid = {
-    #     'bb_window': [15, 20, 25],
-    #     'bb_std': [1.5, 2.0, 2.5],
-    #     'vwap_window': [15, 20, 25],
-    #     'vwap_std': [1.5, 2.0, 2.5],
-    #     'atr_period': [10, 14, 20]
-    # }
-    # best_params, best_metrics = grid_search(param_grid, df, MeanReversionStrategy)
-    # print('\nOptimal Parameters:', best_params)
-    # print('Optimal Metrics:', best_metrics)
