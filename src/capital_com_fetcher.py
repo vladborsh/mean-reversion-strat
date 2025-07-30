@@ -67,6 +67,7 @@ class CapitalComDataFetcher:
             'GBPUSD=X': 'GBPUSD',
             'USDJPY=X': 'USDJPY',
             'USDCHF=X': 'USDCHF',
+            'EURCHF=X': 'EURCHF',  # Added missing EURCHF mapping
             'AUDUSD=X': 'AUDUSD',
             'USDCAD=X': 'USDCAD',
             'NZDUSD=X': 'NZDUSD',
@@ -77,12 +78,23 @@ class CapitalComDataFetcher:
             'GBPUSD': 'GBPUSD',
             'USDJPY': 'USDJPY',
             'USDCHF': 'USDCHF',
+            'EURCHF': 'EURCHF',    # Added missing EURCHF mapping
             'AUDUSD': 'AUDUSD',
             'USDCAD': 'USDCAD',
             'NZDUSD': 'NZDUSD',
             'EURJPY': 'EURJPY',
             'GBPJPY': 'GBPJPY',
-            'EURGBP': 'EURGBP'
+            'EURGBP': 'EURGBP',
+            # Common variations for config compatibility
+            'EURCHFX': 'EURCHF',
+            'EURJPYX': 'EURJPY',
+            'EURGBPX': 'EURGBP',
+            'GBPJPYX': 'GBPJPY',
+            'GBPUSDX': 'GBPUSD',
+            'AUDUSDX': 'AUDUSD',
+            'NZDUSDX': 'NZDUSD',
+            'USDCADX': 'USDCAD',
+            'EURUSDX': 'EURUSD'
         }
         
         # Common indices mapping
@@ -107,12 +119,14 @@ class CapitalComDataFetcher:
             'BITCOIN': 'BTCUSD',
             'BTCUSD': 'BTCUSD',
             'BTC': 'BTCUSD',
+            'BTCUSDX': 'BTCUSD',  # Added for config compatibility
             'ETHEREUM=X': 'ETHUSD',
             'ETH=X': 'ETHUSD',
             'ETHUSD=X': 'ETHUSD',
             'ETHEREUM': 'ETHUSD',
             'ETHUSD': 'ETHUSD',
             'ETH': 'ETHUSD',
+            'ETHUSDX': 'ETHUSD',  # Added for config compatibility
             'LITECOIN=X': 'LTCUSD',
             'LTC=X': 'LTCUSD',
             'LITECOIN': 'LTCUSD',
@@ -133,12 +147,14 @@ class CapitalComDataFetcher:
             'XAU_USD': 'GOLD',
             'GOLD_USD': 'GOLD',
             'GOLD': 'GOLD',
+            'GOLDX': 'GOLD',  # Added for config compatibility
             'SILVER=X': 'SILVER',
             'SI=F': 'SILVER',
             'XAGUSD': 'SILVER',
             'XAG_USD': 'SILVER',
             'SILVER_USD': 'SILVER',
-            'SILVER': 'SILVER'
+            'SILVER': 'SILVER',
+            'SILVERX': 'SILVER'  # Added for config compatibility
         }
     
     def _wait_for_rate_limit(self):
