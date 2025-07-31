@@ -2,6 +2,12 @@
 
 This document explains how to build and run the mean reversion strategy in a container using Podman.
 
+## Related Documentation
+
+- **[Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment for the live trading bot
+- **[Telegram Bot Integration](TELEGRAM_BOT_INTEGRATION.md)** - Live trading with Telegram notifications
+- **[Transport Layer](TRANSPORT_LAYER.md)** - Storage backend configuration details
+
 ## Building the Container
 
 ```bash
@@ -95,4 +101,5 @@ S3 transport options use AWS credentials from the `.env` file that is included d
 - The container is automatically removed after execution with `--rm`
 - AWS credentials for S3 transport are configured via the `.env` file during container build
 - Transport configuration via CLI arguments provides more flexibility than environment variables
-- For troubleshooting, see the README or transport layer documentation
+- For troubleshooting, see the README or [Transport Layer documentation](TRANSPORT_LAYER.md)
+- For live trading bot deployment, see [Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)

@@ -12,7 +12,13 @@ import backtrader as bt
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from .strategy import MeanReversionStrategy
+try:
+    from ..strategy import MeanReversionStrategy
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from strategy import MeanReversionStrategy
 
 
 class LiveOrderCapture(MeanReversionStrategy):

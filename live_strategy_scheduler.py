@@ -12,7 +12,11 @@ Features:
 - Validates last candle is current (within 5 minutes of UTC time)
 - Trading hours validation (6:00-17:00 UTC)
 - Automatic symbol management from balanced config
-- Real-time logging and monitoring
+- R        logger.info("⏰ Schedule: Every 5 minutes (:00, :05, :10, :15, :20, etc.)")
+        logger.info("🕐 Trading hours: 6:00-17:00 UTC")
+        logger.info(f"📊 Symbols: {len(self.symbols_config)}")
+        logger.info(f"📱 Telegram notifications: {'Enabled' if self.enable_telegram else 'Disabled'}")
+        logger.info("\nPress Ctrl+C to stop gracefully...\n")me logging and monitoring
 """
 
 import time
@@ -22,6 +26,7 @@ import sys
 import os
 import contextlib
 import logging
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 import pandas as pd
@@ -32,14 +37,15 @@ import backtrader as bt
 load_dotenv()
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from data_fetcher import DataFetcher
-from strategy import MeanReversionStrategy
-from strategy_config import DEFAULT_CONFIG
-from helpers import is_trading_hour, format_trading_session_info
-from capital_com_fetcher import create_capital_com_fetcher
-from bot.live_signal_detector import LiveSignalDetector
+from src.data_fetcher import DataFetcher
+from src.strategy import MeanReversionStrategy
+from src.strategy_config import DEFAULT_CONFIG
+from src.helpers import is_trading_hour, format_trading_session_info
+from src.capital_com_fetcher import create_capital_com_fetcher
+from src.bot.live_signal_detector import LiveSignalDetector
+from src.bot.telegram_bot import create_telegram_bot_from_env, TelegramBotManager
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -60,21 +66,37 @@ def suppress_stdout():
 class LiveStrategyScheduler:
     """Live trading strategy scheduler for multiple symbols"""
     
-    def __init__(self, config_file_path: str = None):
+    def __init__(self, config_file_path: str = None, enable_telegram: bool = True):
         """
         Initialize the live strategy scheduler
         
         Args:
             config_file_path: Path to balanced config file (defaults to results/best_configs_balanced.json)
+            enable_telegram: Whether to enable Telegram notifications
         """
         self.config_file_path = config_file_path or os.path.join(
             os.path.dirname(__file__), 'results', 'best_configs_balanced.json'
         )
         self.symbols_config = {}
         self.running = False
+        self.enable_telegram = enable_telegram
         
         # Initialize the live signal detector in quiet mode
         self.signal_detector = LiveSignalDetector(verbose=False)
+        
+        # Initialize Telegram bot if enabled
+        self.telegram_bot = None
+        if self.enable_telegram:
+            try:
+                self.telegram_bot = create_telegram_bot_from_env()
+                if self.telegram_bot:
+                    logger.info("📱 Telegram bot integration enabled")
+                else:
+                    logger.warning("⚠️  Telegram bot disabled - TELEGRAM_BOT_TOKEN not found")
+                    self.enable_telegram = False
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Telegram bot: {e}")
+                self.enable_telegram = False
         
         # Load symbol configurations
         self._load_symbol_configs()
@@ -86,6 +108,7 @@ class LiveStrategyScheduler:
         logger.info("🚀 Live Strategy Scheduler initialized")
         logger.info(f"📁 Config file: {self.config_file_path}")
         logger.info(f"📊 Loaded {len(self.symbols_config)} symbols")
+        logger.info(f"📱 Telegram notifications: {'Enabled' if self.enable_telegram else 'Disabled'}")
         logger.info("⏰ Running every 5 minutes during trading hours (6:00-17:00 UTC)")
     
     def _load_symbol_configs(self):
@@ -286,6 +309,10 @@ class LiveStrategyScheduler:
                 logger.warning(f"       Take Profit: {signal_result['take_profit']:.4f}")
                 logger.warning(f"       Position Size: {signal_result['position_size']:.2f}")
                 logger.warning(f"       Risk Amount: ${signal_result['risk_amount']:.2f}")
+                
+                # Send Telegram notification if enabled
+                if self.enable_telegram and self.telegram_bot:
+                    asyncio.create_task(self._send_telegram_signal(analysis_result))
             else:
                 logger.info(f"    ✅ Analysis completed: {current_price:.4f} - {signal_result['reason']}")
             
@@ -300,6 +327,40 @@ class LiveStrategyScheduler:
                 'error': str(e),
                 'message': f'Analysis failed for {symbol}'
             }
+    
+    async def _send_telegram_signal(self, analysis_result: Dict[str, Any]):
+        """
+        Send Telegram notification for a trading signal
+        
+        Args:
+            analysis_result: Dictionary containing analysis results with signal data
+        """
+        try:
+            if not self.telegram_bot:
+                return
+            
+            signal_data = analysis_result.get('signal', {})
+            if signal_data.get('signal_type') in ['long', 'short']:
+                # Prepare signal data for Telegram
+                telegram_signal_data = {
+                    'signal_type': signal_data.get('signal_type'),
+                    'symbol': analysis_result.get('symbol'),
+                    'direction': signal_data.get('direction', signal_data.get('signal_type', '').upper()),
+                    'entry_price': signal_data.get('entry_price'),
+                    'stop_loss': signal_data.get('stop_loss'),
+                    'take_profit': signal_data.get('take_profit'),
+                    'position_size': signal_data.get('position_size'),
+                    'risk_amount': signal_data.get('risk_amount'),
+                    'risk_reward_ratio': signal_data.get('risk_reward_ratio', 2.0),
+                    'strategy_params': analysis_result.get('strategy_params', {})
+                }
+                
+                # Send notification
+                result = await self.telegram_bot.send_signal_notification(telegram_signal_data)
+                logger.info(f"📱 Telegram signal sent to {result.get('sent', 0)} chats")
+                
+        except Exception as e:
+            logger.error(f"❌ Error sending Telegram signal: {e}")
     
     def _create_strategy_params(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -427,9 +488,6 @@ class LiveStrategyScheduler:
         
         logger.info(f"🏁 CYCLE COMPLETE: {cycle_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         logger.info("="*80)
-        
-        # Log results to file (optional)
-        self._log_cycle_results(results, cycle_start, cycle_end)
     
     def _log_cycle_results(self, results: List[Dict], cycle_start: datetime, cycle_end: datetime):
         """
@@ -488,73 +546,109 @@ class LiveStrategyScheduler:
     
     def start_scheduler(self):
         """
-        Start the live trading scheduler
+        Start the live trading scheduler (synchronous wrapper)
+        """
+        asyncio.run(self.start_scheduler_async())
+    
+    async def start_scheduler_async(self):
+        """
+        Start the live trading scheduler with Telegram integration
         """
         logger.info("\n🎯 Starting live strategy scheduler...")
         logger.info("⏰ Schedule: Every 5 minutes (:00, :05, :10, :15, :20, etc.)")
         logger.info("🕐 Trading hours: 6:00-17:00 UTC")
         logger.info(f"📊 Symbols: {len(self.symbols_config)}")
-        logger.info("💾 Logs saved to: live_logs/")
+        logger.info(f"� Telegram notifications: {'Enabled' if self.enable_telegram else 'Disabled'}")
+        logger.info("�💾 Logs saved to: live_logs/")
         logger.info("\nPress Ctrl+C to stop gracefully...\n")
+        
+        # Initialize Telegram bot if enabled
+        telegram_task = None
+        if self.enable_telegram and self.telegram_bot:
+            try:
+                if await self.telegram_bot.initialize():
+                    telegram_task = asyncio.create_task(self.telegram_bot.start_bot())
+                    logger.info("📱 Telegram bot started successfully")
+                else:
+                    logger.error("❌ Failed to initialize Telegram bot")
+                    self.enable_telegram = False
+            except Exception as e:
+                logger.error(f"❌ Error starting Telegram bot: {e}")
+                self.enable_telegram = False
         
         self.running = True
         
-        # Run initial cycle if within trading hours
-        if self._validate_trading_hours():
-            logger.info("🚀 Running initial strategy cycle...")
-            self.run_strategy_cycle()
-        
-        # Main scheduler loop with custom 5-minute timing
-        last_run_minute = -1  # Track last run to avoid duplicates
-        
-        while self.running:
-            try:
-                current_time = datetime.now(timezone.utc)
-                current_minute = current_time.minute
-                current_second = current_time.second
-                
-                # Check if we're at a 5-minute mark (0, 5, 10, 15, etc.) and at 15 second into the minute
-                if current_minute % 5 == 0 and current_second == 15 and current_minute != last_run_minute:
-                    # Only run if we're in trading hours
-                    if self._validate_trading_hours():
-                        self.run_strategy_cycle()
-                        last_run_minute = current_minute
-                    else:
-                        last_run_minute = current_minute  # Still update to avoid multiple trading hour checks
+        try:
+            # Run initial cycle if within trading hours
+            if self._validate_trading_hours():
+                logger.info("🚀 Running initial strategy cycle...")
+                self.run_strategy_cycle()
+            
+            # Main scheduler loop with custom 5-minute timing
+            last_run_minute = -1  # Track last run to avoid duplicates
+            
+            while self.running:
+                try:
+                    current_time = datetime.now(timezone.utc)
+                    current_minute = current_time.minute
+                    current_second = current_time.second
                     
-                    # Sleep for 1 second to avoid running multiple times in the same minute
-                    time.sleep(1)
-                else:
-                    # Calculate and show next run time every 30 seconds
-                    if current_second == 0 or current_second == 30:
-                        next_run_minute = ((current_minute // 5) + 1) * 5
-                        if next_run_minute >= 60:
-                            next_run_minute = 0
-                            next_hour = current_time.hour + 1
+                    # Check if we're at a 5-minute mark (0, 5, 10, 15, etc.) and at 15 second into the minute
+                    if current_minute % 5 == 0 and current_second == 15 and current_minute != last_run_minute:
+                        # Only run if we're in trading hours
+                        if self._validate_trading_hours():
+                            self.run_strategy_cycle()
+                            last_run_minute = current_minute
                         else:
-                            next_hour = current_time.hour
+                            last_run_minute = current_minute  # Still update to avoid multiple trading hour checks
                         
-                        next_run_time = current_time.replace(hour=next_hour % 24, minute=next_run_minute, second=0, microsecond=0)
-                        if next_run_time <= current_time:
-                            next_run_time += timedelta(hours=1)
+                        # Sleep for 1 second to avoid running multiple times in the same minute
+                        await asyncio.sleep(1)
+                    else:
+                        # Calculate and show next run time every 30 seconds
+                        if current_second == 0 or current_second == 30:
+                            next_run_minute = ((current_minute // 5) + 1) * 5
+                            if next_run_minute >= 60:
+                                next_run_minute = 0
+                                next_hour = current_time.hour + 1
+                            else:
+                                next_hour = current_time.hour
+                            
+                            next_run_time = current_time.replace(hour=next_hour % 24, minute=next_run_minute, second=0, microsecond=0)
+                            if next_run_time <= current_time:
+                                next_run_time += timedelta(hours=1)
+                            
+                            time_until_run = next_run_time - current_time
+                            minutes_until = int(time_until_run.total_seconds() // 60)
+                            seconds_until = int(time_until_run.total_seconds() % 60)
+                            
+                            logger.debug(f"⏰ Next run in {minutes_until:02d}:{seconds_until:02d} at {next_run_time.strftime('%H:%M')} UTC")
                         
-                        time_until_run = next_run_time - current_time
-                        minutes_until = int(time_until_run.total_seconds() // 60)
-                        seconds_until = int(time_until_run.total_seconds() % 60)
-                        
-                        logger.debug(f"⏰ Next run in {minutes_until:02d}:{seconds_until:02d} at {next_run_time.strftime('%H:%M')} UTC")
+                        # Sleep for 1 second and check again
+                        await asyncio.sleep(1)
                     
-                    # Sleep for 1 second and check again
-                    time.sleep(1)
-                
-            except KeyboardInterrupt:
-                logger.info("\n🛑 Keyboard interrupt received. Shutting down...")
-                break
-            except Exception as e:
-                logger.error(f"❌ Scheduler error: {e}")
-                time.sleep(5)  # Wait before retry
+                except KeyboardInterrupt:
+                    logger.info("\n🛑 Keyboard interrupt received. Shutting down...")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ Scheduler error: {e}")
+                    await asyncio.sleep(5)  # Wait before retry
         
-        logger.info("👋 Live strategy scheduler stopped.")
+        finally:
+            # Stop Telegram bot if running
+            if telegram_task and self.telegram_bot:
+                try:
+                    await self.telegram_bot.stop_bot()
+                    telegram_task.cancel()
+                    logger.info("📱 Telegram bot stopped")
+                except Exception as e:
+                    logger.error(f"❌ Error stopping Telegram bot: {e}")
+            
+            logger.info("👋 Live strategy scheduler stopped.")
+
+
+def main():
+    """Main entry point"""
 
 
 def main():
@@ -562,15 +656,11 @@ def main():
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('live_logs/scheduler.log', mode='a')
+            logging.StreamHandler()
         ]
     )
-    
-    # Create live_logs directory if it doesn't exist
-    os.makedirs('live_logs', exist_ok=True)
     
     logger.info("🤖 Mean Reversion Strategy - Live Trading Scheduler")
     logger.info("=" * 60)

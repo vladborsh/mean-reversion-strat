@@ -2,6 +2,22 @@
 
 A comprehensive trading strategy implementation using Bollinger Bands and VWAP for mean reversion trading across forex, crypto, and indices markets.
 
+## Table of Contents
+
+- [Documentation](#documentation)
+- [Features](#features)
+- [Installation and Setup](#installation-and-setup)
+- [High-Level Architecture](#high-level-architecture)
+- [Quick Start](#quick-start)
+- [Live Trading and Telegram Bot](#live-trading-and-telegram-bot)
+- [Running with Containers](#running-with-containers)
+- [CLI Tools and Commands](#cli-tools-and-commands)
+- [Data Sources and Providers](#data-sources-and-providers)
+- [Optimization Framework](#optimization-framework)
+- [Configuration](#configuration)
+- [Trading Logic](#trading-logic)
+- [Transport Layer](#transport-layer)
+
 ## Documentation
 
 Comprehensive documentation is available in the `docs/` directory:
@@ -11,7 +27,9 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
 - **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
 - **[Caching System](docs/CACHING.md)** - Data caching implementation
-- **[Container Documentation](CONTAINER.md)** - Container usage and deployment
+- **[Container Documentation](docs/CONTAINER.md)** - Container usage and deployment
+- **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** - Real-time trading signals via Telegram
+- **[Bot Docker Instructions](docs/BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment for the bot
 - **[AWS Batch Setup](docs/AWS_BATCH_SETUP.md)** - AWS Batch configuration and deployment
 - **[AWS Batch Scripts](docs/AWS_BATCH_SCRIPTS.md)** - Ready-to-use job submission and monitoring scripts
 - **[Transport Layer](docs/TRANSPORT_LAYER.md)** - Storage backends and configuration
@@ -25,6 +43,8 @@ Comprehensive documentation is available in the `docs/` directory:
 - **Performance Tools**: Data caching, market hours validation, visualization
 - **Backtesting**: Complete backtest engine with comprehensive metrics
 - **Optimization**: Multiple hyperparameter tuning approaches with dedicated CLI
+- **🤖 Live Trading Bot**: Telegram bot integration for real-time signal notifications
+- **🐳 Container Support**: Full Docker/Podman support for deployment and scaling
 - **🆕 Transport Layer**: Optional AWS S3 storage for caching and logs with local fallback
 
 ## Installation and Setup
@@ -74,19 +94,35 @@ export CAPITAL_COM_DEMO="true"  # Use demo environment (set to 'false' for live)
 - Professional-grade institutional data
 - Automatic session management
 
+### 4. Telegram Bot Setup (Optional)
+For live trading notifications, configure the Telegram bot:
+
+```bash
+# Add to your .env file for bot notifications
+TELEGRAM_BOT_TOKEN="your_telegram_bot_token_here"
+```
+
+See **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** for detailed setup instructions.
+
+**Benefits of Capital.com integration:**
+- High-frequency data (5m, 15m intervals)
+- Proper forex trading hours handling
+- Professional-grade institutional data
+- Automatic session management
+
 ## High-Level Architecture
 
 ```
-┌────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Data Sources  │────>│  Core Strategy  │────>│    Analysis     │
-│  & Fetchers    │     │  & Backtester   │     │  & Reporting    │
-└────────────────┘     └─────────────────┘     └─────────────────┘
-        │                       │                       │
-        v                       v                       v
-┌────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    Caching     │     │      Risk       │     │  Visualization  │
-│    System      │     │   Management    │     │     Tools       │
-└────────────────┘     └─────────────────┘     └─────────────────┘
+┌────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Data Sources  │────>│  Core Strategy  │────>│    Analysis     │────>│  Telegram Bot   │
+│  & Fetchers    │     │  & Backtester   │     │  & Reporting    │     │ & Notifications │
+└────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │                       │
+        v                       v                       v                       v
+┌────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    Caching     │     │      Risk       │     │  Visualization  │     │ Live Strategy   │
+│    System      │     │   Management    │     │     Tools       │     │   Scheduler     │
+└────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
                                │
                                v
                       ┌─────────────────┐
@@ -102,6 +138,8 @@ export CAPITAL_COM_DEMO="true"  # Use demo environment (set to 'false' for live)
 3. **Backtesting Engine**: Performance evaluation and trade analysis
 4. **Optimization Framework**: Hyperparameter tuning with multiple objectives
 5. **Visualization**: Trading charts, performance metrics, and trade analysis
+6. **Live Trading Bot**: Real-time signal detection and Telegram notifications
+7. **Container Support**: Full Docker/Podman deployment with scaling capabilities
 
 ## Quick Start
 
@@ -115,6 +153,43 @@ python main.py
 # Basic optimization with balanced objective
 python optimize_strategy.py --quick-test
 ```
+
+## Live Trading and Telegram Bot
+
+The strategy includes a live trading scheduler with Telegram bot integration for real-time signal notifications:
+
+### Features
+- **📱 Real-time Notifications**: Get trading signals instantly via Telegram
+- **⏰ Automated Scheduling**: Runs analysis every 5 minutes during trading hours (6:00-17:00 UTC)
+- **🎯 Smart Signal Detection**: Uses optimized parameters for live market analysis
+- **🔄 Multiple Deployment Options**: Run locally, in containers, or on cloud platforms
+
+### Quick Setup
+
+1. **Configure Telegram Bot** (optional):
+   ```bash
+   # Add to your .env file
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+   ```
+
+2. **Run Live Strategy**:
+   ```bash
+   # Start the live strategy scheduler
+   python live_strategy_scheduler.py
+   
+   # Or run in a container (recommended for production)
+   podman build -f Dockerfile.bot -t mean-reversion-bot .
+   podman run --env-file .env mean-reversion-bot
+   ```
+
+3. **Subscribe to Notifications**:
+   - Find your bot on Telegram (using the username you created)
+   - Send `/start` to begin receiving signals
+   - Use `/help` to see available commands
+
+For detailed setup instructions, see:
+- **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** - Complete bot setup guide
+- **[Bot Docker Instructions](docs/BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment
 
 ## Running with Containers
 
