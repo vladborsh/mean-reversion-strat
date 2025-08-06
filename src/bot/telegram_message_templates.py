@@ -40,7 +40,6 @@ class TelegramMessageTemplates:
                 'text': "📋 *Available Commands:*\n\n"
                         "• /start - Start receiving signals\n"
                         "• /stop - Stop receiving signals  \n"
-                        "• /status - Show bot status\n"
                         "• /help - Show this help message\n\n"
                         "🔔 You'll automatically receive trading signals during market hours.",
                 'parse_mode': 'Markdown'
@@ -71,12 +70,7 @@ class TelegramMessageTemplates:
                         "🎯 *Take Profit:* `{take_profit}`\n"
                         "📊 *Position Size:* `{position_size}`\n"
                         "💸 *Risk Amount:* `${risk_amount}`\n"
-                        "⚖️ *Risk/Reward:* `1:{risk_reward_ratio}`\n\n"
-                        "📋 *Strategy Details:*\n"
-                        "• BB Period: {bb_window} | Std: {bb_std}\n"
-                        "• VWAP Period: {vwap_window} | Std: {vwap_std}\n"
-                        "• ATR Period: {atr_period}\n\n"
-                        "⏰ *Time:* `{timestamp}`",
+                        "⚖️ *Risk/Reward:* `1:{risk_reward_ratio}`\n\n",
                 'parse_mode': 'Markdown'
             },
             
@@ -88,12 +82,7 @@ class TelegramMessageTemplates:
                         "🎯 *Take Profit:* `{take_profit}`\n"
                         "📊 *Position Size:* `{position_size}`\n"
                         "💸 *Risk Amount:* `${risk_amount}`\n"
-                        "⚖️ *Risk/Reward:* `1:{risk_reward_ratio}`\n\n"
-                        "📋 *Strategy Details:*\n"
-                        "• BB Period: {bb_window} | Std: {bb_std}\n"
-                        "• VWAP Period: {vwap_window} | Std: {vwap_std}\n"
-                        "• ATR Period: {atr_period}\n\n"
-                        "⏰ *Time:* `{timestamp}`",
+                        "⚖️ *Risk/Reward:* `1:{risk_reward_ratio}`\n\n",
                 'parse_mode': 'Markdown'
             },
             

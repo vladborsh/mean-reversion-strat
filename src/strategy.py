@@ -1,9 +1,12 @@
 import backtrader as bt
 import pandas as pd
+import logging
 from .indicators import Indicators
 from .risk_management import RiskManager, ATRIndicator, create_risk_manager
 from .strategy_config import DEFAULT_CONFIG
 from .market_regime import MarketRegimeFilter
+
+logger = logging.getLogger(__name__)
 
 class MeanReversionStrategy(bt.Strategy):
     # Get default params and extend with timeframe and risk management
@@ -16,8 +19,7 @@ class MeanReversionStrategy(bt.Strategy):
     base_params['stop_loss_atr_multiplier'] = risk_config['stop_loss_atr_multiplier']
     base_params['risk_reward_ratio'] = risk_config['risk_reward_ratio']
     
-    # Add verbose parameter (default True for backward compatibility)
-    base_params['verbose'] = True
+    # Removed verbose parameter - using logger instead
     
     # Convert to backtrader params format
     params = tuple(base_params.items())
@@ -45,9 +47,10 @@ class MeanReversionStrategy(bt.Strategy):
         if hasattr(self.p, 'risk_reward_ratio'):
             risk_config['risk_reward_ratio'] = self.p.risk_reward_ratio
         
-        # Pass quiet parameter based on verbose setting (inverted)
-        quiet = not getattr(self.p, 'verbose', True)
-        self.risk_manager = create_risk_manager(risk_config, quiet=quiet)
+        # Initialize risk manager with logger-based output
+        logger.info("MeanReversionStrategy initialized")
+        
+        self.risk_manager = create_risk_manager(risk_config)
         
         # Technical indicators
         self.bb_ma = bt.indicators.SimpleMovingAverage(self.datas[0], period=self.p.bb_window)
@@ -123,8 +126,7 @@ class MeanReversionStrategy(bt.Strategy):
             minutes_elapsed = time_elapsed.total_seconds() / 60
             
             if minutes_elapsed >= self.order_lifetime_minutes:
-                if getattr(self.p, 'verbose', True):
-                    print(f"FORCE CLOSING position after {minutes_elapsed:.1f} minutes (lifetime: {self.order_lifetime_minutes} minutes)")
+                logger.info(f"FORCE CLOSING position after {minutes_elapsed:.1f} minutes (lifetime: {self.order_lifetime_minutes} minutes)")
                 self.close()
                 self._record_trade_outcome('lifetime_expired', self.dataclose[0])  # Only for lifetime expiry use market price
                 return
@@ -132,10 +134,9 @@ class MeanReversionStrategy(bt.Strategy):
         if not self.position:
             # Check if we're within trading hours (6 UTC - 17 UTC)
             if not self._is_trading_hours():
-                # Optional verbose logging for debugging (uncomment if needed)
-                # if getattr(self.p, 'verbose', True):
-                #     current_time = self.datas[0].datetime.time(0)
-                #     print(f"TRADING BLOCKED - Outside hours (6-17 UTC). Current: {current_time.hour:02d}:{current_time.minute:02d}")
+                # Optional debug logging for trading hours (uncomment if needed)
+                # current_time = self.datas[0].datetime.time(0)
+                # logger.debug(f"TRADING BLOCKED - Outside hours (6-17 UTC). Current: {current_time.hour:02d}:{current_time.minute:02d}")
                 return  # Skip trading outside of allowed hours
             
             # Long signal - Buy when price breaks below both bands and shows reversal
@@ -237,8 +238,7 @@ class MeanReversionStrategy(bt.Strategy):
                             }
                             self.order_log.append(order_info)
                             
-                            if getattr(self.p, 'verbose', True):
-                                print(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
+                            logger.info(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
                                       f"{order_info['type']} {position_size} units at {entry_price:.4f}, "
                                       f"SL: {stop_loss:.4f} ({self.risk_manager.stop_loss_atr_multiplier}*ATR), "
                                       f"TP: {take_profit:.4f} (RR: 1:{risk_metrics['risk_reward_ratio']:.1f}), "
@@ -350,8 +350,7 @@ class MeanReversionStrategy(bt.Strategy):
                             }
                             self.order_log.append(order_info)
                             
-                            if getattr(self.p, 'verbose', True):
-                                print(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
+                            logger.info(f"ORDER FOUND - {order_info['date']} {order_info['time']}: "
                                       f"{order_info['type']} {position_size} units at {entry_price:.4f}, "
                                       f"SL: {stop_loss:.4f} ({self.risk_manager.stop_loss_atr_multiplier}*ATR), "
                                       f"TP: {take_profit:.4f} (RR: 1:{risk_metrics['risk_reward_ratio']:.1f}), "
@@ -396,18 +395,16 @@ class MeanReversionStrategy(bt.Strategy):
         if order.status == order.Completed:
             # Market orders execute immediately, so we already set entry time when creating the order
             self.order = None
-            if getattr(self.p, 'verbose', True):
-                print(f"Market Order FILLED at {self.dataclose[0]:.4f} - Position active")
+            logger.info(f"Market Order FILLED at {self.dataclose[0]:.4f} - Position active")
             
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             # Order was not filled (shouldn't happen with market orders, but handle edge cases)
-            if getattr(self.p, 'verbose', True):
-                if order.status == order.Canceled:
-                    print(f"Order CANCELLED")
-                elif order.status == order.Rejected:
-                    print(f"Order REJECTED")
-                elif order.status == order.Margin:
-                    print(f"Order FAILED due to margin")
+            if order.status == order.Canceled:
+                logger.info(f"Order CANCELLED")
+            elif order.status == order.Rejected:
+                logger.info(f"Order REJECTED")
+            elif order.status == order.Margin:
+                logger.info(f"Order FAILED due to margin")
                 
             # Reset tracking variables
             self.order = None
@@ -455,8 +452,7 @@ class MeanReversionStrategy(bt.Strategy):
                         
                         calculated_pnl = price_diff * position_size
                         
-                        if getattr(self.p, 'verbose', True):
-                            print(f"P&L Calculation: {order_type} {position_size} units, "
+                        logger.debug(f"P&L Calculation: {order_type} {position_size} units, "
                                   f"Entry: {entry_price:.4f}, Exit: {exit_price:.4f}, "
                                   f"Diff: {price_diff:+.4f}, P&L: {calculated_pnl:+.4f}")
                         break
@@ -501,8 +497,7 @@ class MeanReversionStrategy(bt.Strategy):
         """Called when the strategy stops - ensure all positions are closed and orders have outcomes"""
         # Force close any remaining open position
         if self.position:
-            if getattr(self.p, 'verbose', True):
-                print(f"FORCE CLOSING remaining position at backtest end: {self.position.size} units")
+            logger.info(f"FORCE CLOSING remaining position at backtest end: {self.position.size} units")
             self.close()
             # Record the forced closure
             self._record_trade_outcome('backtest_end_forced', self.dataclose[0])
@@ -512,8 +507,7 @@ class MeanReversionStrategy(bt.Strategy):
         orders_without_outcomes = [order for order in self.order_log if 'trade_outcome' not in order]
         
         if orders_without_outcomes:
-            if getattr(self.p, 'verbose', True):
-                print(f"FORCING OUTCOMES for {len(orders_without_outcomes)} incomplete orders at backtest end")
+            logger.info(f"FORCING OUTCOMES for {len(orders_without_outcomes)} incomplete orders at backtest end")
             
             current_price = self.dataclose[0]
             current_date = self.datas[0].datetime.date(0).isoformat()
@@ -550,8 +544,7 @@ class MeanReversionStrategy(bt.Strategy):
                     'deposit_after': current_deposit,
                     'deposit_change': current_deposit - deposit_before
                 }
-                if getattr(self.p, 'verbose', True):
-                    print(f"  Added forced outcome for {order['order_id']}: backtest_end @ {current_price:.4f}, P&L: {calculated_pnl:+.2f}")
+                logger.debug(f"  Added forced outcome for {order['order_id']}: backtest_end @ {current_price:.4f}, P&L: {calculated_pnl:+.2f}")
         
         # Reset position tracking
         self.order_entry_time = None

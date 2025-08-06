@@ -38,12 +38,18 @@ logger = logging.getLogger(__name__)
 class MeanReversionTelegramBot:
     """Main Telegram bot class for mean reversion strategy notifications"""
     
-    def __init__(self, bot_token: str):
+    def __init__(self, bot_token: str, use_dynamodb: bool = True, 
+                 table_name: str = None, region_name: str = None,
+                 auto_register_chats: bool = True):
         """
         Initialize the Telegram bot
         
         Args:
             bot_token: Telegram bot token from environment
+            use_dynamodb: Whether to use DynamoDB for persistence (default: True)
+            table_name: DynamoDB table name (optional)
+            region_name: AWS region (optional)
+            auto_register_chats: Automatically register new chats on any message (default: True)
         """
         if not TELEGRAM_AVAILABLE:
             raise ImportError("python-telegram-bot library not installed. Run: pip install python-telegram-bot")
@@ -51,9 +57,10 @@ class MeanReversionTelegramBot:
         self.bot_token = bot_token
         self.application = None
         self.running = False
+        self.auto_register_chats = auto_register_chats
         
         # Initialize components
-        self.chat_manager = TelegramChatManager()
+        self.chat_manager = TelegramChatManager(use_dynamodb, table_name, region_name)
         self.templates = TelegramMessageTemplates()
         self.notifier = TelegramSignalNotifier(bot_token, self.chat_manager, self.templates)
         
@@ -61,11 +68,16 @@ class MeanReversionTelegramBot:
         self.start_time = datetime.now()
         self.command_count = 0
         
-        logger.info("Mean Reversion Telegram Bot initialized")
+        logger.info(f"Mean Reversion Telegram Bot initialized (auto-register: {auto_register_chats})")
     
     async def initialize(self):
         """Initialize the Telegram bot application"""
         try:
+            # Load existing chats from DynamoDB
+            loaded_count = self.chat_manager.load_chats_from_storage()
+            if loaded_count > 0:
+                logger.info(f"Loaded {loaded_count} active chats from storage")
+            
             # Build application
             self.application = ApplicationBuilder().token(self.bot_token).build()
             
@@ -74,6 +86,13 @@ class MeanReversionTelegramBot:
             self.application.add_handler(CommandHandler("stop", self._handle_stop))
             self.application.add_handler(CommandHandler("help", self._handle_help))
             self.application.add_handler(CommandHandler("status", self._handle_status))
+            
+            # Add message handler for auto-registration (before unknown command handler)
+            if self.auto_register_chats:
+                # This handler will catch all non-command messages
+                self.application.add_handler(
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
+                )
             
             # Add unknown command handler (must be last)
             self.application.add_handler(
@@ -145,6 +164,40 @@ class MeanReversionTelegramBot:
     async def send_custom_message(self, message: str) -> Dict[str, Any]:
         """Send custom message to all active chats"""
         return await self.notifier.send_custom_message(message)
+    
+    async def _auto_register_chat(self, update: Update) -> bool:
+        """
+        Auto-register a chat if it's not already registered
+        
+        Args:
+            update: Telegram update object
+            
+        Returns:
+            True if chat was newly registered, False if already registered
+        """
+        chat_id = update.effective_chat.id
+        
+        # Check if chat is already active
+        if self.chat_manager.is_chat_active(chat_id):
+            return False
+        
+        # Extract user info
+        user = update.effective_user
+        user_info = {
+            'username': user.username,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'user_id': user.id,
+            'auto_registered': True
+        } if user else {'auto_registered': True}
+        
+        # Add chat to active chats
+        was_new = self.chat_manager.add_chat(chat_id, user_info)
+        
+        if was_new:
+            logger.info(f"Auto-registered new chat: {user_info.get('username', 'Unknown')} (ID: {chat_id})")
+        
+        return was_new
     
     # Command Handlers
     async def _handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -226,9 +279,41 @@ class MeanReversionTelegramBot:
         except Exception as e:
             logger.error(f"Error handling /status command: {e}")
     
+    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle regular text messages (for auto-registration)"""
+        try:
+            # Auto-register chat if needed
+            was_new = await self._auto_register_chat(update)
+            
+            if was_new:
+                # Send welcome message for auto-registered users
+                await self.notifier.send_welcome_message(update.effective_chat.id)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="🎉 You've been automatically registered to receive trading signals!\n\n"
+                         "Use /help to see available commands or /stop to unsubscribe."
+                )
+            else:
+                # For existing users, just acknowledge the message
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="👍 You're already registered for trading signals.\n"
+                         "Use /help for available commands."
+                )
+            
+            # Update activity
+            self.chat_manager.update_chat_activity(update.effective_chat.id, 'message')
+            
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
+    
     async def _handle_unknown_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle unknown commands"""
         try:
+            # Auto-register chat if enabled
+            if self.auto_register_chats:
+                await self._auto_register_chat(update)
+            
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="❓ Sorry, I don't understand that command.\n\nUse /help to see available commands."
@@ -268,9 +353,14 @@ class MeanReversionTelegramBot:
 
 
 # Utility function to create bot instance from environment
-def create_telegram_bot_from_env() -> Optional[MeanReversionTelegramBot]:
+def create_telegram_bot_from_env(use_dynamodb: bool = True, 
+                                 auto_register_chats: bool = True) -> Optional[MeanReversionTelegramBot]:
     """
     Create Telegram bot instance from environment variables
+    
+    Args:
+        use_dynamodb: Whether to use DynamoDB for persistence (default: True)
+        auto_register_chats: Automatically register new chats on any message (default: True)
         
     Returns:
         Bot instance or None if token not available
@@ -281,8 +371,23 @@ def create_telegram_bot_from_env() -> Optional[MeanReversionTelegramBot]:
         logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
         return None
     
+    # Get optional DynamoDB configuration from environment
+    table_name = os.getenv('TELEGRAM_CHATS_TABLE')
+    region_name = os.getenv('AWS_REGION')
+    
+    # Check for auto-registration setting in environment
+    auto_register = os.getenv('TELEGRAM_AUTO_REGISTER', 'true').lower() == 'true'
+    if not auto_register_chats:
+        auto_register = False  # Override with parameter if explicitly set to False
+    
     try:
-        return MeanReversionTelegramBot(bot_token)
+        return MeanReversionTelegramBot(
+            bot_token=bot_token,
+            use_dynamodb=use_dynamodb,
+            table_name=table_name,
+            region_name=region_name,
+            auto_register_chats=auto_register
+        )
     except Exception as e:
         logger.error(f"Failed to create Telegram bot: {e}")
         return None

@@ -46,6 +46,7 @@ from src.helpers import is_trading_hour, format_trading_session_info
 from src.capital_com_fetcher import create_capital_com_fetcher
 from src.bot.live_signal_detector import LiveSignalDetector
 from src.bot.telegram_bot import create_telegram_bot_from_env, TelegramBotManager
+from src.symbol_config_manager import SymbolConfigManager
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -81,16 +82,17 @@ class LiveStrategyScheduler:
         self.running = False
         self.enable_telegram = enable_telegram
         
-        # Initialize the live signal detector in quiet mode
-        self.signal_detector = LiveSignalDetector(verbose=False)
+        # Initialize the live signal detector
+        self.signal_detector = LiveSignalDetector()
         
         # Initialize Telegram bot if enabled
         self.telegram_bot = None
         if self.enable_telegram:
             try:
-                self.telegram_bot = create_telegram_bot_from_env()
+                # Create bot with DynamoDB persistence enabled
+                self.telegram_bot = create_telegram_bot_from_env(use_dynamodb=True)
                 if self.telegram_bot:
-                    logger.info("📱 Telegram bot integration enabled")
+                    logger.info("📱 Telegram bot integration enabled with DynamoDB persistence")
                 else:
                     logger.warning("⚠️  Telegram bot disabled - TELEGRAM_BOT_TOKEN not found")
                     self.enable_telegram = False
@@ -99,7 +101,14 @@ class LiveStrategyScheduler:
                 self.enable_telegram = False
         
         # Load symbol configurations
-        self._load_symbol_configs()
+        try:
+            self.symbols_config = SymbolConfigManager.load_symbol_configs(self.config_file_path)
+        except FileNotFoundError:
+            logger.error(f"❌ Configuration file not found: {self.config_file_path}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"❌ Error loading configurations: {e}")
+            sys.exit(1)
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -110,68 +119,6 @@ class LiveStrategyScheduler:
         logger.info(f"📊 Loaded {len(self.symbols_config)} symbols")
         logger.info(f"📱 Telegram notifications: {'Enabled' if self.enable_telegram else 'Disabled'}")
         logger.info("⏰ Running every 5 minutes during trading hours (6:00-17:00 UTC)")
-    
-    def _load_symbol_configs(self):
-        """Load optimized configurations for all symbols"""
-        try:
-            with open(self.config_file_path, 'r') as f:
-                configs = json.load(f)
-            
-            self.symbols_config = {}
-            for symbol_key, config in configs.items():
-                # Extract symbol info
-                asset_info = config['ASSET_INFO']
-                symbol = asset_info['symbol']
-                timeframe = asset_info['timeframe']
-                
-                # Convert symbol format for data fetching with special handling
-                fetch_symbol = self._convert_symbol_for_fetching(symbol)
-                
-                self.symbols_config[symbol_key] = {
-                    'symbol': symbol,
-                    'fetch_symbol': fetch_symbol,
-                    'timeframe': timeframe,
-                    'config': config
-                }
-                
-                logger.debug(f"   ✓ {symbol} ({timeframe}) - {fetch_symbol}")
-            
-            logger.info(f"✅ Loaded configurations for {len(self.symbols_config)} symbols")
-            
-        except FileNotFoundError:
-            logger.error(f"❌ Configuration file not found: {self.config_file_path}")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"❌ Error loading configurations: {e}")
-            sys.exit(1)
-    
-    def _convert_symbol_for_fetching(self, symbol: str) -> str:
-        """
-        Convert symbol from config format to data fetching format
-        
-        Args:
-            symbol: Symbol from config (e.g., 'AUDUSDX', 'GOLDX', 'SILVERX')
-            
-        Returns:
-            Symbol for data fetching (e.g., 'AUDUSD=X', 'GOLD=X', 'SILVER=X')
-        """
-        # Special mappings for commodities
-        special_mappings = {
-            'GOLDX': 'GOLD=X',
-            'SILVERX': 'SILVER=X',
-            'BTCUSDX': 'BTC=X',
-            'ETHUSDX': 'ETH=X'
-        }
-        
-        if symbol in special_mappings:
-            return special_mappings[symbol]
-        
-        # Standard forex conversion (AUDUSDX -> AUDUSD=X)
-        if symbol.endswith('X') and len(symbol) == 7:
-            return symbol[:-1] + '=X'
-        
-        # Return as-is if no conversion needed
-        return symbol
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
@@ -304,12 +251,12 @@ class LiveStrategyScheduler:
             
             # Log signal if generated
             if signal_result['signal_type'] not in ['no_signal', 'error', 'insufficient_data', 'data_preparation_failed']:
-                logger.warning(f"    🚨 SIGNAL: {signal_result['signal_type'].upper()} at {current_price:.4f}")
-                logger.warning(f"       Stop Loss: {signal_result['stop_loss']:.4f}")
-                logger.warning(f"       Take Profit: {signal_result['take_profit']:.4f}")
-                logger.warning(f"       Position Size: {signal_result['position_size']:.2f}")
-                logger.warning(f"       Risk Amount: ${signal_result['risk_amount']:.2f}")
-                
+                logger.info(f"    🚨 SIGNAL: {signal_result['signal_type'].upper()} at {current_price:.4f}")
+                logger.info(f"       Stop Loss: {signal_result['stop_loss']:.4f}")
+                logger.info(f"       Take Profit: {signal_result['take_profit']:.4f}")
+                logger.info(f"       Position Size: {signal_result['position_size']:.2f}")
+                logger.info(f"       Risk Amount: ${signal_result['risk_amount']:.2f}")
+
                 # Send Telegram notification if enabled
                 if self.enable_telegram and self.telegram_bot:
                     asyncio.create_task(self._send_telegram_signal(analysis_result))
@@ -661,6 +608,11 @@ def main():
             logging.StreamHandler()
         ]
     )
+    
+    # Suppress telegram bot HTTP polling logs
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("telegram").setLevel(logging.WARNING)
     
     logger.info("🤖 Mean Reversion Strategy - Live Trading Scheduler")
     logger.info("=" * 60)

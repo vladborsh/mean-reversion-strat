@@ -9,16 +9,21 @@ would place at the current time without actually executing trades.
 
 import pandas as pd
 import backtrader as bt
+import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+logger = logging.getLogger(__name__)
+
 try:
     from ..strategy import MeanReversionStrategy
+    from ..backtest import LeveragedBroker
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     from strategy import MeanReversionStrategy
+    from backtest import LeveragedBroker
 
 
 class LiveOrderCapture(MeanReversionStrategy):
@@ -33,28 +38,11 @@ class LiveOrderCapture(MeanReversionStrategy):
         self.last_order_info = None
         
     def next(self):
-        # Store the order state before calling parent's next()
-        had_order_before = self.order is not None
-        had_position_before = bool(self.position)
-        
         # Call the original strategy's next() method
         super().next()
         
-        # Check if this is the current time (last candle) and a new order was created
-        current_time = self.datas[0].datetime.datetime(0)
-        now = datetime.utcnow()
-        current_candle_time = current_time.replace(tzinfo=None) if current_time.tzinfo else current_time
-        
-        # Allow up to 5 minute tolerance for live data
-        time_diff = abs((now - current_candle_time).total_seconds())
-        is_current_candle = time_diff <= 300  # 5 minutes
-        
-        # Check if a new order was created on this current candle
-        if (is_current_candle and 
-            len(self.datas[0]) == len(self.datas[0].close) and
-            not had_order_before and self.order is not None and
-            not had_position_before):
-            
+        # Check if we have an order (signal detected) - capture it regardless of timing
+        if self.order is not None:
             # Capture the order details that the strategy just created
             self._capture_new_order()
     
@@ -124,13 +112,9 @@ class LiveSignalDetector:
     and capturing new orders placed at current time
     """
     
-    def __init__(self, verbose: bool = False):
-        """Initialize the live signal detector
-        
-        Args:
-            verbose: Whether to print detailed messages during analysis
-        """
-        self.verbose = verbose
+    def __init__(self):
+        """Initialize the live signal detector"""
+        pass
     
     def prepare_backtrader_data(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
         """
@@ -156,8 +140,7 @@ class LiveSignalDetector:
                         # If volume is missing, add a dummy volume column
                         data['volume'] = 1000000
                     else:
-                        if self.verbose:
-                            print(f"      ❌ Required column '{col}' not found in data")
+                        logger.debug(f"Required column '{col}' not found in data")
                         return None
             
             # Ensure all data is numeric
@@ -168,15 +151,13 @@ class LiveSignalDetector:
             data = data.dropna()
             
             if data.empty:
-                if self.verbose:
-                    print(f"      ❌ Data is empty after cleaning")
+                logger.debug("Data is empty after cleaning")
                 return None
             
             return data[required_columns]
             
         except Exception as e:
-            if self.verbose:
-                print(f"      ❌ Error preparing backtrader data: {e}")
+            logger.debug(f"Error preparing backtrader data: {e}")
             return None
     
     def detect_signals(self, data: pd.DataFrame, strategy_params: Dict[str, Any], symbol: str) -> Dict[str, Any]:
@@ -211,15 +192,16 @@ class LiveSignalDetector:
             cerebro.adddata(datafeed)
             
             # Add the strategy with the provided parameters (exactly as configured)
-            # Set verbose=False to reduce noise during live signal detection
+            # Strategy parameters (verbose parameter removed - using logger instead)
             strategy_params_clean = strategy_params.copy()
-            strategy_params_clean['verbose'] = False  # Force verbose mode off for live detection
             
             cerebro.addstrategy(LiveOrderCapture, **strategy_params_clean)
             
-            # Set up a minimal broker (not actually trading, just for analysis)
-            cerebro.broker.setcash(100000)
-            cerebro.broker.setcommission(commission=0.001)
+            # Set up leveraged broker (matching production environment)
+            leveraged_broker = LeveragedBroker(leverage=100.0, actual_cash=100000.0, verbose=False)
+            cerebro.setbroker(leveraged_broker)
+            leveraged_broker.setcash(100000.0)  # This sets leveraged amount internally
+            leveraged_broker.setcommission(commission=0.001)
             
             # Run the analysis
             results = cerebro.run()
@@ -242,8 +224,7 @@ class LiveSignalDetector:
                 }
                 
         except Exception as e:
-            if self.verbose:
-                print(f"      ❌ Cerebro analysis error: {e}")
+            logger.debug(f"Cerebro analysis error: {e}")
             return {
                 'signal_type': 'error',
                 'direction': 'HOLD',

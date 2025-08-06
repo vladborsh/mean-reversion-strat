@@ -622,9 +622,8 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             if opt_param in params:
                 strategy_params[strategy_param] = params[opt_param]
         
-        # Add timeframe and verbose setting for optimization
+        # Add timeframe for optimization
         strategy_params['timeframe'] = self.timeframe
-        strategy_params['verbose'] = False  # Reduce strategy console output during optimization
         
         return strategy_params
     

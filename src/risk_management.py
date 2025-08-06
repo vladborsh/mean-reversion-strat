@@ -10,7 +10,10 @@ This module provides comprehensive risk management functionality including:
 
 import backtrader as bt
 import pandas as pd
+import logging
 from typing import Dict, Any, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class RiskManager:
@@ -24,7 +27,7 @@ class RiskManager:
                  risk_reward_ratio: float = 2.5,
                  atr_period: int = 14,
                  leverage: float = 100.0,
-                 quiet: bool = False):
+                 ):
         """
         Initialize risk management parameters.
         
@@ -34,14 +37,14 @@ class RiskManager:
             risk_reward_ratio: Risk-reward ratio for take profit (default: 2.5)
             atr_period: Period for ATR calculation (default: 14)
             leverage: Available leverage for position sizing (default: 100.0)
-            quiet: Whether to suppress console output (default: False)
+            # Removed quiet parameter - using logger instead
         """
         self.risk_per_position_pct = risk_per_position_pct
         self.stop_loss_atr_multiplier = stop_loss_atr_multiplier
         self.risk_reward_ratio = risk_reward_ratio
         self.atr_period = atr_period
         self.leverage = leverage
-        self.quiet = quiet
+        # Using logger instead of quiet parameter
     
     def calculate_atr_stop_loss(self, current_price: float, atr_value: float, position_type: str) -> float:
         """
@@ -124,9 +127,8 @@ class RiskManager:
             
             # Log the adjustment if significant
             if max_position_size < position_size * 0.8:  # If reduction is more than 20%
-                if not self.quiet:
-                    print(f"Position size adjusted due to margin: {position_size} -> {max_position_size}")
-                    print(f"Required margin: ${required_margin:.2f}, Available: ${account_value:.2f}")
+                logger.info(f"Position size adjusted due to margin: {position_size} -> {max_position_size}")
+                logger.info(f"Required margin: ${required_margin:.2f}, Available: ${account_value:.2f}")
             
             position_size = max_position_size
         
@@ -272,13 +274,13 @@ class ATRIndicator(bt.Indicator):
         )
 
 
-def create_risk_manager(config: Optional[Dict[str, Any]] = None, quiet: bool = False) -> RiskManager:
+def create_risk_manager(config: Optional[Dict[str, Any]] = None) -> RiskManager:
     """
     Factory function to create a RiskManager with configuration.
     
     Args:
         config: Configuration dictionary with risk parameters
-        quiet: Whether to suppress console output (default: False)
+        # Removed quiet parameter - using logger instead
         
     Returns:
         Configured RiskManager instance
@@ -289,7 +291,7 @@ def create_risk_manager(config: Optional[Dict[str, Any]] = None, quiet: bool = F
         'risk_reward_ratio': 2.5,
         'atr_period': 14,
         'leverage': 100.0,  # Default leverage for forex/CFD trading
-        'quiet': quiet
+        # Removed quiet parameter
     }
     
     if config:

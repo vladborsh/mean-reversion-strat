@@ -66,7 +66,7 @@ class CapitalComDataFetcher:
             'EURUSD=X': 'EURUSD',
             'GBPUSD=X': 'GBPUSD',
             'USDJPY=X': 'USDJPY',
-            'USDCHF=X': 'USDCHF',
+            'CHFUSD=X': 'CHFUSD',
             'EURCHF=X': 'EURCHF',  # Added missing EURCHF mapping
             'AUDUSD=X': 'AUDUSD',
             'USDCAD=X': 'USDCAD',
@@ -77,7 +77,7 @@ class CapitalComDataFetcher:
             'EURUSD': 'EURUSD',
             'GBPUSD': 'GBPUSD',
             'USDJPY': 'USDJPY',
-            'USDCHF': 'USDCHF',
+            'USDCHF': 'CHFUSD',
             'EURCHF': 'EURCHF',    # Added missing EURCHF mapping
             'AUDUSD': 'AUDUSD',
             'USDCAD': 'USDCAD',
@@ -93,7 +93,7 @@ class CapitalComDataFetcher:
             'GBPUSDX': 'GBPUSD',
             'AUDUSDX': 'AUDUSD',
             'NZDUSDX': 'NZDUSD',
-            'USDCADX': 'USDCAD',
+            'USDCADX': 'CADUSD',
             'EURUSDX': 'EURUSD'
         }
         
