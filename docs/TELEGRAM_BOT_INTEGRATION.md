@@ -5,6 +5,8 @@ This documentation covers the Telegram bot integration for the Mean Reversion Tr
 ## Related Documentation
 
 - **[Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Container setup and deployment for the bot
+- **[Signal Cache Persistence](signal_cache_persistence.md)** - Persistent storage for duplicate signal prevention
+- **[Telegram DynamoDB Persistence](telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
 - **[Strategy Documentation](STRATEGY_DOCUMENTATION.md)** - Core strategy implementation
 - **[Container Documentation](CONTAINER.md)** - General container usage and deployment
 
@@ -202,6 +204,17 @@ The bot includes comprehensive error handling:
 - **Network Issues**: Retries failed sends with exponential backoff
 - **Rate Limits**: Respects Telegram API rate limits
 - **Graceful Degradation**: Continues trading even if notifications fail
+
+## Signal Cache Persistence
+
+The bot includes an intelligent signal cache system to prevent duplicate notifications:
+
+- **Duplicate Detection**: Prevents sending the same signal multiple times within 24 hours
+- **Price Tolerance**: Accounts for small price fluctuations (configurable threshold)
+- **Persistent Storage**: Uses DynamoDB to maintain cache across restarts and multiple instances
+- **Automatic Cleanup**: Old signals are automatically removed after expiration
+
+For detailed configuration and troubleshooting, see **[Signal Cache Persistence](signal_cache_persistence.md)**.
 
 ## Security Considerations
 

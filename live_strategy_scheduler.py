@@ -46,6 +46,7 @@ from src.helpers import is_trading_hour, format_trading_session_info
 from src.capital_com_fetcher import create_capital_com_fetcher
 from src.bot.live_signal_detector import LiveSignalDetector
 from src.bot.telegram_bot import create_telegram_bot_from_env, TelegramBotManager
+from src.bot.signal_cache import create_signal_cache
 from src.symbol_config_manager import SymbolConfigManager
 
 # Configure logging for this module
@@ -84,6 +85,15 @@ class LiveStrategyScheduler:
         
         # Initialize the live signal detector
         self.signal_detector = LiveSignalDetector()
+        
+        # Initialize signal cache with persistence to prevent duplicate notifications
+        # Use DynamoDB for persistence if available, otherwise fall back to in-memory
+        use_persistence = os.getenv('USE_PERSISTENT_CACHE', 'true').lower() == 'true'
+        self.signal_cache = create_signal_cache(
+            use_persistence=use_persistence,
+            price_tolerance=0.0005, 
+            cache_duration_hours=24
+        )
         
         # Initialize Telegram bot if enabled
         self.telegram_bot = None
@@ -302,9 +312,23 @@ class LiveStrategyScheduler:
                     'strategy_params': analysis_result.get('strategy_params', {})
                 }
                 
+                # Check if this signal is a duplicate
+                if self.signal_cache.is_duplicate(telegram_signal_data):
+                    return
+                
+                # Add signal to cache BEFORE sending to prevent race conditions
+                cache_success = self.signal_cache.add_signal(telegram_signal_data)
+                if cache_success:
+                    logger.debug(f"✅ Signal cached for {telegram_signal_data['symbol']} before sending")
+                else:
+                    logger.warning(f"⚠️ Failed to cache signal for {telegram_signal_data['symbol']} - continuing with send")
+                
                 # Send notification
                 result = await self.telegram_bot.send_signal_notification(telegram_signal_data)
                 logger.info(f"📱 Telegram signal sent to {result.get('sent', 0)} chats")
+                
+                if result.get('sent', 0) == 0:
+                    logger.warning(f"⚠️ No chats received signal for {telegram_signal_data['symbol']}")
                 
         except Exception as e:
             logger.error(f"❌ Error sending Telegram signal: {e}")
@@ -432,6 +456,20 @@ class LiveStrategyScheduler:
                 
                 logger.warning(f"     {symbol}: {direction} @ {entry:.4f}")
                 logger.warning(f"       SL: {sl:.4f} | TP: {tp:.4f} | Size: {size:.2f} | Risk: ${risk:.2f}")
+        
+        # Log cache statistics periodically
+        cache_stats = self.signal_cache.get_cache_stats()
+        
+        # Show both local and DynamoDB cache stats
+        local_count = cache_stats.get('cached_signals_local', cache_stats.get('cached_signals', 0))
+        db_count = cache_stats.get('cached_signals_dynamodb', 0)
+        duplicates_prevented = cache_stats.get('duplicates_prevented', 0)
+        
+        if duplicates_prevented > 0:
+            logger.info(f"📊 Signal cache: {duplicates_prevented} duplicates prevented "
+                       f"({cache_stats['duplicate_rate']:.1f}% duplicate rate)")
+        
+        logger.info(f"💾 Cache status: Local={local_count} DynamoDB={db_count} signals")
         
         logger.info(f"🏁 CYCLE COMPLETE: {cycle_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         logger.info("="*80)

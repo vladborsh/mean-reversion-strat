@@ -25,10 +25,13 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
 - **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
 - **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
+- **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Strategy performance evolution and improvements
 - **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
 - **[Caching System](docs/CACHING.md)** - Data caching implementation
 - **[Container Documentation](docs/CONTAINER.md)** - Container usage and deployment
 - **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** - Real-time trading signals via Telegram
+- **[Signal Cache Persistence](docs/signal_cache_persistence.md)** - DynamoDB storage for duplicate signal prevention
+- **[Telegram DynamoDB Persistence](docs/telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
 - **[Bot Docker Instructions](docs/BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment for the bot
 - **[AWS Batch Setup](docs/AWS_BATCH_SETUP.md)** - AWS Batch configuration and deployment
 - **[AWS Batch Scripts](docs/AWS_BATCH_SCRIPTS.md)** - Ready-to-use job submission and monitoring scripts

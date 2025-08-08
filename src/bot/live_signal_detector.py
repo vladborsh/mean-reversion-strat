@@ -36,15 +36,19 @@ class LiveOrderCapture(MeanReversionStrategy):
         super().__init__()
         self.current_time_orders = []
         self.last_order_info = None
+        self.previous_order = None  # Track previous order state
         
     def next(self):
         # Call the original strategy's next() method
         super().next()
         
-        # Check if we have an order (signal detected) - capture it regardless of timing
-        if self.order is not None:
+        # Check if we have a NEW order (transition from None to not-None)
+        if self.order is not None and self.previous_order is None:
             # Capture the order details that the strategy just created
             self._capture_new_order()
+        
+        # Update previous order state for next iteration
+        self.previous_order = self.order
     
     def _capture_new_order(self):
         """Capture details of the new order that was just placed"""

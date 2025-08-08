@@ -4,6 +4,8 @@
 
 The Mean Reversion Strategy project includes an intelligent data caching system that automatically stores fetched market data to improve performance and reduce API calls.
 
+> **Note**: This document covers **market data caching** for price/volume data. For **signal duplicate prevention**, see **[Signal Cache Persistence](signal_cache_persistence.md)** which uses a separate DynamoDB-based caching system.
+
 ## Key Benefits
 
 - **Performance**: 5-20x faster data loading on subsequent requests

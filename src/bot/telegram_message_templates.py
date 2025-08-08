@@ -69,7 +69,6 @@ class TelegramMessageTemplates:
                         "🛑 *Stop Loss:* `{stop_loss}`\n"
                         "🎯 *Take Profit:* `{take_profit}`\n"
                         "📊 *Position Size:* `{position_size}`\n"
-                        "💸 *Risk Amount:* `${risk_amount}`\n"
                         "⚖️ *Risk/Reward:* `1:{risk_reward_ratio}`\n\n",
                 'parse_mode': 'Markdown'
             },
@@ -81,7 +80,6 @@ class TelegramMessageTemplates:
                         "🛑 *Stop Loss:* `{stop_loss}`\n"
                         "🎯 *Take Profit:* `{take_profit}`\n"
                         "📊 *Position Size:* `{position_size}`\n"
-                        "💸 *Risk Amount:* `${risk_amount}`\n"
                         "⚖️ *Risk/Reward:* `1:{risk_reward_ratio}`\n\n",
                 'parse_mode': 'Markdown'
             },
@@ -158,7 +156,6 @@ class TelegramMessageTemplates:
                 stop_loss=f"{signal_data.get('stop_loss', 0):.4f}",
                 take_profit=f"{signal_data.get('take_profit', 0):.4f}",
                 position_size=f"{signal_data.get('position_size', 0):.2f}",
-                risk_amount=f"{signal_data.get('risk_amount', 0):.2f}",
                 risk_reward_ratio=f"{signal_data.get('risk_reward_ratio', 2):.1f}",
                 bb_window=signal_data.get('strategy_params', {}).get('bb_window', 'N/A'),
                 bb_std=signal_data.get('strategy_params', {}).get('bb_std', 'N/A'),

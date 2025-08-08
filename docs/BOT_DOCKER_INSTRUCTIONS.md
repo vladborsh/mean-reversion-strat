@@ -5,6 +5,8 @@ This document provides instructions for building and running the Podman containe
 ## Related Documentation
 
 - **[Telegram Bot Integration](TELEGRAM_BOT_INTEGRATION.md)** - Complete guide to setting up and using the Telegram bot
+- **[Signal Cache Persistence](signal_cache_persistence.md)** - DynamoDB configuration for signal duplicate prevention
+- **[Telegram DynamoDB Persistence](telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
 - **[Container Documentation](CONTAINER.md)** - General container usage and deployment
 - **[Strategy Documentation](STRATEGY_DOCUMENTATION.md)** - Core strategy implementation details
 
@@ -30,6 +32,19 @@ CAPITAL_COM_IDENTIFIER=your_identifier_here
 
 # Telegram Bot Token (optional, for notifications)
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+
+# DynamoDB Configuration (optional, for persistence)
+# Signal Cache Persistence
+USE_PERSISTENT_CACHE=true
+SIGNALS_CACHE_TABLE=trading-signals-cache
+
+# Telegram Chat Persistence  
+TELEGRAM_CHATS_TABLE=telegram-chats
+AWS_REGION=us-east-1
+
+# AWS Credentials (if using DynamoDB)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
 ```
 
 ## Build Instructions

@@ -1,8 +1,16 @@
 # Telegram Bot DynamoDB Persistence
 
+## Related Documentation
+
+- **[Signal Cache Persistence](signal_cache_persistence.md)** - DynamoDB storage for duplicate signal prevention (uses same base class)
+- **[Telegram Bot Integration](TELEGRAM_BOT_INTEGRATION.md)** - Complete guide to bot setup and usage
+- **[Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment configuration
+
 ## Overview
 
 The Telegram bot now supports persistent storage of chat IDs using AWS DynamoDB. This ensures that registered users continue receiving trading signals even after bot restarts or deployments.
+
+Both the chat storage and signal cache systems share the same `DynamoDBBase` class for consistent DynamoDB operations.
 
 ## Features
 

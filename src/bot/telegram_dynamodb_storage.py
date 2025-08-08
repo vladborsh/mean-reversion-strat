@@ -12,14 +12,15 @@ from typing import Set, Dict, Any, Optional, List
 from datetime import datetime, timezone
 from decimal import Decimal
 
-import boto3
-from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError, BotoCoreError
+from boto3.dynamodb.conditions import Key, Attr
+from botocore.exceptions import ClientError
+
+from .dynamodb_base import DynamoDBBase
 
 logger = logging.getLogger(__name__)
 
 
-class TelegramDynamoDBStorage:
+class TelegramDynamoDBStorage(DynamoDBBase):
     """DynamoDB storage manager for Telegram chat IDs and metadata"""
     
     def __init__(self, table_name: str = None, region_name: str = None):
@@ -30,57 +31,40 @@ class TelegramDynamoDBStorage:
             table_name: DynamoDB table name (defaults to env var TELEGRAM_CHATS_TABLE)
             region_name: AWS region (defaults to env var AWS_REGION or us-east-1)
         """
-        self.table_name = table_name or os.getenv('TELEGRAM_CHATS_TABLE', 'telegram-chats')
-        self.region_name = region_name or os.getenv('AWS_REGION', 'us-east-1')
+        # Set table name
+        table_name = table_name or os.getenv('TELEGRAM_CHATS_TABLE', 'telegram-chats')
         
-        # Initialize DynamoDB client and resource
-        try:
-            self.dynamodb = boto3.resource('dynamodb', region_name=self.region_name)
-            self.table = self.dynamodb.Table(self.table_name)
-            logger.info(f"Connected to DynamoDB table: {self.table_name} in region {self.region_name}")
-        except Exception as e:
-            logger.error(f"Failed to connect to DynamoDB: {e}")
-            raise
+        # Initialize base class
+        super().__init__(table_name=table_name, region_name=region_name)
+        
+        # Create table if it doesn't exist
+        self.create_table_if_not_exists()
     
     def create_table_if_not_exists(self):
         """Create DynamoDB table if it doesn't exist"""
-        try:
-            # Check if table exists
-            self.table.load()
+        if not self.table_exists():
+            logger.info(f"Creating DynamoDB table: {self.table_name}")
+            
+            # Create table
+            return self.create_table(
+                table_name=self.table_name,
+                key_schema=[
+                    {
+                        'AttributeName': 'chat_id',
+                        'KeyType': 'HASH'  # Partition key
+                    }
+                ],
+                attribute_definitions=[
+                    {
+                        'AttributeName': 'chat_id',
+                        'AttributeType': 'N'  # Number type for chat ID
+                    }
+                ],
+                billing_mode='PAY_PER_REQUEST'
+            )
+        else:
             logger.info(f"Table {self.table_name} already exists")
             return True
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ResourceNotFoundException':
-                # Table doesn't exist, create it
-                logger.info(f"Creating DynamoDB table: {self.table_name}")
-                try:
-                    table = self.dynamodb.create_table(
-                        TableName=self.table_name,
-                        KeySchema=[
-                            {
-                                'AttributeName': 'chat_id',
-                                'KeyType': 'HASH'  # Partition key
-                            }
-                        ],
-                        AttributeDefinitions=[
-                            {
-                                'AttributeName': 'chat_id',
-                                'AttributeType': 'N'  # Number type for chat ID
-                            }
-                        ],
-                        BillingMode='PAY_PER_REQUEST'  # On-demand pricing
-                    )
-                    
-                    # Wait for table to be created
-                    table.wait_until_exists()
-                    logger.info(f"Successfully created table: {self.table_name}")
-                    return True
-                except ClientError as create_error:
-                    logger.error(f"Failed to create table: {create_error}")
-                    return False
-            else:
-                logger.error(f"Error checking table existence: {e}")
-                return False
     
     def save_chat(self, chat_id: int, user_info: Optional[Dict[str, Any]] = None) -> bool:
         """
@@ -108,13 +92,14 @@ class TelegramDynamoDBStorage:
                     k: v for k, v in user_info.items() if v is not None
                 }
             
-            # Put item to DynamoDB
-            self.table.put_item(Item=item)
-            logger.info(f"Saved chat {chat_id} to DynamoDB")
-            return True
+            # Put item to DynamoDB using base class method
+            if self.put_item(item):
+                logger.info(f"Saved chat {chat_id} to DynamoDB")
+                return True
+            return False
             
-        except ClientError as e:
-            logger.error(f"Failed to save chat {chat_id} to DynamoDB: {e}")
+        except Exception as e:
+            logger.error(f"Failed to save chat {chat_id}: {e}")
             return False
     
     def update_chat_activity(self, chat_id: int, increment_message_count: bool = False) -> bool:
@@ -138,16 +123,17 @@ class TelegramDynamoDBStorage:
                 update_expression += ", message_count = message_count + :inc"
                 expression_values[':inc'] = 1
             
-            self.table.update_item(
-                Key={'chat_id': chat_id},
-                UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_values
-            )
+            # Use base class update method
+            if self.update_item(
+                key={'chat_id': chat_id},
+                update_expression=update_expression,
+                expression_values=expression_values
+            ):
+                logger.debug(f"Updated activity for chat {chat_id}")
+                return True
+            return False
             
-            logger.debug(f"Updated activity for chat {chat_id}")
-            return True
-            
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to update chat {chat_id} activity: {e}")
             return False
     
@@ -162,19 +148,20 @@ class TelegramDynamoDBStorage:
             True if successful, False otherwise
         """
         try:
-            self.table.update_item(
-                Key={'chat_id': chat_id},
-                UpdateExpression="SET is_active = :inactive, removed_at = :now",
-                ExpressionAttributeValues={
+            # Use base class update method
+            if self.update_item(
+                key={'chat_id': chat_id},
+                update_expression="SET is_active = :inactive, removed_at = :now",
+                expression_values={
                     ':inactive': False,
                     ':now': datetime.now(timezone.utc).isoformat()
                 }
-            )
+            ):
+                logger.info(f"Deactivated chat {chat_id} in DynamoDB")
+                return True
+            return False
             
-            logger.info(f"Deactivated chat {chat_id} in DynamoDB")
-            return True
-            
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to deactivate chat {chat_id}: {e}")
             return False
     
@@ -189,19 +176,20 @@ class TelegramDynamoDBStorage:
             True if successful, False otherwise
         """
         try:
-            self.table.update_item(
-                Key={'chat_id': chat_id},
-                UpdateExpression="SET is_active = :active, last_active = :now REMOVE removed_at",
-                ExpressionAttributeValues={
+            # Use base class update method
+            if self.update_item(
+                key={'chat_id': chat_id},
+                update_expression="SET is_active = :active, last_active = :now REMOVE removed_at",
+                expression_values={
                     ':active': True,
                     ':now': datetime.now(timezone.utc).isoformat()
                 }
-            )
+            ):
+                logger.info(f"Reactivated chat {chat_id} in DynamoDB")
+                return True
+            return False
             
-            logger.info(f"Reactivated chat {chat_id} in DynamoDB")
-            return True
-            
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to reactivate chat {chat_id}: {e}")
             return False
     
@@ -215,41 +203,22 @@ class TelegramDynamoDBStorage:
         active_chats = set()
         
         try:
-            # Scan table for active chats
-            response = self.table.scan(
-                FilterExpression='is_active = :active',
-                ExpressionAttributeValues={
-                    ':active': True
-                },
-                ProjectionExpression='chat_id'
+            # Use base class scan method
+            items = self.scan_with_filter(
+                filter_expression=Attr('is_active').eq(True),
+                projection_expression='chat_id'
             )
             
             # Process results
-            for item in response.get('Items', []):
+            for item in items:
                 chat_id = int(item.get('chat_id', 0))
                 if chat_id:
                     active_chats.add(chat_id)
             
-            # Handle pagination
-            while 'LastEvaluatedKey' in response:
-                response = self.table.scan(
-                    FilterExpression='is_active = :active',
-                    ExpressionAttributeValues={
-                        ':active': True
-                    },
-                    ProjectionExpression='chat_id',
-                    ExclusiveStartKey=response['LastEvaluatedKey']
-                )
-                
-                for item in response.get('Items', []):
-                    chat_id = int(item.get('chat_id', 0))
-                    if chat_id:
-                        active_chats.add(chat_id)
-            
             logger.info(f"Loaded {len(active_chats)} active chats from DynamoDB")
             return active_chats
             
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to load active chats from DynamoDB: {e}")
             return set()
     
@@ -263,36 +232,21 @@ class TelegramDynamoDBStorage:
         chat_metadata = {}
         
         try:
-            # Scan entire table
-            response = self.table.scan()
+            # Use base class scan method (no filter to get all)
+            items = self.scan_with_filter()
             
             # Process results
-            for item in response.get('Items', []):
+            for item in items:
+                # Convert using base class method
+                item = self.convert_decimal_to_number(item)
                 chat_id = int(item.get('chat_id', 0))
                 if chat_id:
-                    # Convert Decimal to int/float for JSON compatibility
-                    if 'message_count' in item and isinstance(item['message_count'], Decimal):
-                        item['message_count'] = int(item['message_count'])
-                    
                     chat_metadata[chat_id] = item
-            
-            # Handle pagination
-            while 'LastEvaluatedKey' in response:
-                response = self.table.scan(
-                    ExclusiveStartKey=response['LastEvaluatedKey']
-                )
-                
-                for item in response.get('Items', []):
-                    chat_id = int(item.get('chat_id', 0))
-                    if chat_id:
-                        if 'message_count' in item and isinstance(item['message_count'], Decimal):
-                            item['message_count'] = int(item['message_count'])
-                        chat_metadata[chat_id] = item
             
             logger.info(f"Loaded metadata for {len(chat_metadata)} chats from DynamoDB")
             return chat_metadata
             
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to load chat metadata from DynamoDB: {e}")
             return {}
     
@@ -307,20 +261,16 @@ class TelegramDynamoDBStorage:
             Chat metadata or None if not found
         """
         try:
-            response = self.table.get_item(
-                Key={'chat_id': chat_id}
-            )
+            # Use base class get_item method
+            item = self.get_item({'chat_id': chat_id})
             
-            item = response.get('Item')
             if item:
-                # Convert Decimal to int/float
-                if 'message_count' in item and isinstance(item['message_count'], Decimal):
-                    item['message_count'] = int(item['message_count'])
-                return item
+                # Convert Decimal types
+                return self.convert_decimal_to_number(item)
             
             return None
             
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to get info for chat {chat_id}: {e}")
             return None
     
@@ -335,12 +285,39 @@ class TelegramDynamoDBStorage:
             True if chat exists, False otherwise
         """
         try:
-            response = self.table.get_item(
-                Key={'chat_id': chat_id},
-                ProjectionExpression='chat_id'
-            )
-            return 'Item' in response
+            # Use base class get_item method
+            item = self.get_item({'chat_id': chat_id})
+            return item is not None
             
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to check if chat {chat_id} exists: {e}")
             return False
+    
+    def get_chat_statistics(self) -> Dict[str, Any]:
+        """
+        Get statistics about stored chats
+        
+        Returns:
+            Dictionary with chat statistics
+        """
+        try:
+            all_chats = self.load_all_chat_metadata()
+            
+            active_count = sum(1 for chat in all_chats.values() if chat.get('is_active', False))
+            inactive_count = len(all_chats) - active_count
+            
+            total_messages = sum(chat.get('message_count', 0) for chat in all_chats.values())
+            
+            stats = {
+                'total_chats': len(all_chats),
+                'active_chats': active_count,
+                'inactive_chats': inactive_count,
+                'total_messages_sent': total_messages,
+                'average_messages_per_chat': total_messages / len(all_chats) if all_chats else 0
+            }
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Failed to get chat statistics: {e}")
+            return {}

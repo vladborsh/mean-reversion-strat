@@ -6,6 +6,8 @@ This document provides step-by-step instructions for deploying the Mean Reversio
 
 - **[Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Local container setup and testing
 - **[Telegram Bot Integration](TELEGRAM_BOT_INTEGRATION.md)** - Bot configuration and features
+- **[Signal Cache Persistence](signal_cache_persistence.md)** - DynamoDB configuration for signal caching
+- **[Telegram DynamoDB Persistence](telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
 - **[Container Documentation](CONTAINER.md)** - General container usage
 
 ## Prerequisites
