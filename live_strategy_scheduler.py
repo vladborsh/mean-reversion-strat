@@ -147,7 +147,7 @@ class LiveStrategyScheduler:
         current_hour = current_time.hour
         
         # Trading hours: 6 UTC to 17 UTC (6:00 - 17:00)
-        is_trading_time = 6 <= current_hour < 17
+        is_trading_time = 6 <= current_hour < 19
         
         if not is_trading_time:
             logger.info(f"🕒 Outside trading hours: {current_time.strftime('%H:%M')} UTC (6:00-17:00 required)")

@@ -10,7 +10,7 @@ would place at the current time without actually executing trades.
 import pandas as pd
 import backtrader as bt
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,30 @@ class LiveOrderCapture(MeanReversionStrategy):
         if self.order is None:
             return
         
+        # Get current real time for comparison
+        current_real_time = datetime.now(timezone.utc)
+        
+        # Check if order is too old (more than 10 minutes from now)
+        if hasattr(self, 'order_entry_time'):
+            order_time = self.order_entry_time
+        else:
+            # Fallback to current candle time if order time not available
+            order_time = self.datas[0].datetime.datetime(0)
+        
+        # Make order_time timezone-aware if it's naive (assume UTC)
+        if order_time.tzinfo is None:
+            order_time = order_time.replace(tzinfo=timezone.utc)
+        
+        time_diff = (current_real_time - order_time).total_seconds() / 60.0  # Convert to minutes
+
+        logger.info(f"⏰ Order is {time_diff:.1f} minutes old (limit: 10 min)")
+
+        # Reject orders older than 10 minutes
+        if time_diff > 10.0:
+            logger.info(f"⏰ Rejecting old order: {time_diff:.1f} minutes old (limit: 10 min)")
+            logger.debug(f"   Order time: {order_time}, Current time: {current_real_time}")
+            return
+        
         # Extract order information from the strategy's state
         entry_price = self.dataclose[0]  # Current price (entry)
         stop_loss = getattr(self, 'stop_price', 0.0)
@@ -63,9 +87,31 @@ class LiveOrderCapture(MeanReversionStrategy):
         # Get risk metrics if available
         if hasattr(self, 'risk_manager') and hasattr(self, 'atr'):
             try:
-                # Determine direction based on order type or position
-                direction = 'BUY'  # Default assumption for new orders
-                signal_type = 'long'
+                # Determine direction based on actual order or strategy state
+                if hasattr(self.order, 'isbuy'):
+                    # Use order's isbuy() method if available
+                    if self.order.isbuy():
+                        direction = 'BUY'
+                        signal_type = 'long'
+                    else:
+                        direction = 'SELL'
+                        signal_type = 'short'
+                elif hasattr(self.order, 'size'):
+                    # Check order size to determine direction
+                    if self.order.size > 0:
+                        direction = 'BUY'
+                        signal_type = 'long'
+                    else:
+                        direction = 'SELL'
+                        signal_type = 'short'
+                else:
+                    # Fallback: determine from stop loss position relative to entry
+                    if stop_loss < entry_price:
+                        direction = 'BUY'
+                        signal_type = 'long'
+                    else:
+                        direction = 'SELL'
+                        signal_type = 'short'
                 
                 # Get risk metrics from the risk manager
                 risk_metrics = self.risk_manager.get_risk_metrics(
@@ -96,10 +142,17 @@ class LiveOrderCapture(MeanReversionStrategy):
                 self.last_order_info = order_info
                 
             except Exception as e:
-                # Fallback with basic information
+                # Fallback with basic information - detect direction from stop loss
+                if stop_loss < entry_price:
+                    fallback_direction = 'BUY'
+                    fallback_signal_type = 'long'
+                else:
+                    fallback_direction = 'SELL'
+                    fallback_signal_type = 'short'
+                    
                 self.last_order_info = {
-                    'signal_type': 'unknown',
-                    'direction': 'BUY',
+                    'signal_type': fallback_signal_type,
+                    'direction': fallback_direction,
                     'entry_price': entry_price,
                     'stop_loss': stop_loss,
                     'take_profit': take_profit,
