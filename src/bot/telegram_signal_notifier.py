@@ -42,12 +42,13 @@ class TelegramSignalNotifier:
         
         logger.info("Telegram signal notifier initialized")
     
-    async def send_signal_notification(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_signal_notification(self, signal_data: Dict[str, Any], chart_buffer: Optional[bytes] = None) -> Dict[str, Any]:
         """
         Send trading signal notification to all active chats
         
         Args:
             signal_data: Dictionary containing signal information
+            chart_buffer: Optional chart image as bytes buffer
             
         Returns:
             Dictionary with sending statistics
@@ -70,7 +71,7 @@ class TelegramSignalNotifier:
         logger.info(f"Signal: {signal_data.get('signal_type', 'Unknown')} - {signal_data.get('symbol', 'Unknown')}")
         
         # Send to all chats with error handling
-        results = await self._send_to_multiple_chats(active_chats, message_data)
+        results = await self._send_to_multiple_chats(active_chats, message_data, chart_buffer=chart_buffer)
         
         # Update statistics
         self.signal_count += 1
@@ -142,13 +143,14 @@ class TelegramSignalNotifier:
         
         return results
     
-    async def _send_to_multiple_chats(self, chat_ids: set, message_data: Dict[str, str]) -> Dict[str, Any]:
+    async def _send_to_multiple_chats(self, chat_ids: set, message_data: Dict[str, str], chart_buffer: Optional[bytes] = None) -> Dict[str, Any]:
         """
         Send message to multiple chats with error handling and rate limiting
         
         Args:
             chat_ids: Set of chat IDs to send to
             message_data: Message data with text and parse_mode
+            chart_buffer: Optional chart image as bytes buffer
             
         Returns:
             Dictionary with sending statistics
@@ -165,7 +167,7 @@ class TelegramSignalNotifier:
         tasks = []
         
         for chat_id in chat_ids:
-            task = self._send_single_message(semaphore, chat_id, message_data, results)
+            task = self._send_single_message(semaphore, chat_id, message_data, results, chart_buffer)
             tasks.append(task)
         
         # Wait for all sends to complete
@@ -175,7 +177,7 @@ class TelegramSignalNotifier:
     
     async def _send_single_message(self, semaphore: asyncio.Semaphore, 
                                   chat_id: int, message_data: Dict[str, str], 
-                                  results: Dict[str, Any]):
+                                  results: Dict[str, Any], chart_buffer: Optional[bytes] = None):
         """
         Send message to a single chat with error handling
         
@@ -184,15 +186,27 @@ class TelegramSignalNotifier:
             chat_id: Chat ID to send to
             message_data: Message data
             results: Results dictionary to update
+            chart_buffer: Optional chart image as bytes buffer
         """
         async with semaphore:
             try:
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=message_data['text'],
-                    parse_mode=message_data.get('parse_mode', 'Markdown'),
-                    disable_web_page_preview=True
-                )
+                if chart_buffer:
+                    # Send photo with caption when chart is available
+                    import io
+                    await self.bot.send_photo(
+                        chat_id=chat_id,
+                        photo=io.BytesIO(chart_buffer),
+                        caption=message_data['text'],
+                        parse_mode=message_data.get('parse_mode', 'Markdown')
+                    )
+                else:
+                    # Send text message when no chart is available
+                    await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=message_data['text'],
+                        parse_mode=message_data.get('parse_mode', 'Markdown'),
+                        disable_web_page_preview=True
+                    )
                 
                 results['sent'] += 1
                 
@@ -227,12 +241,21 @@ class TelegramSignalNotifier:
                 logger.warning(f"Network error for chat {chat_id}: {e}")
                 try:
                     await asyncio.sleep(1)  # Wait before retry
-                    await self.bot.send_message(
-                        chat_id=chat_id,
-                        text=message_data['text'],
-                        parse_mode=message_data.get('parse_mode', 'Markdown'),
-                    disable_web_page_preview=True
-                    )
+                    if chart_buffer:
+                        import io
+                        await self.bot.send_photo(
+                            chat_id=chat_id,
+                            photo=io.BytesIO(chart_buffer),
+                            caption=message_data['text'],
+                            parse_mode=message_data.get('parse_mode', 'Markdown')
+                        )
+                    else:
+                        await self.bot.send_message(
+                            chat_id=chat_id,
+                            text=message_data['text'],
+                            parse_mode=message_data.get('parse_mode', 'Markdown'),
+                            disable_web_page_preview=True
+                        )
                     results['sent'] += 1
                     self.failed_chats.discard(chat_id)
                     self.chat_manager.update_chat_activity(chat_id, 'signal')

@@ -145,17 +145,18 @@ class MeanReversionTelegramBot:
             except Exception as e:
                 logger.error(f"❌ Error stopping Telegram bot: {e}")
     
-    async def send_signal_notification(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_signal_notification(self, signal_data: Dict[str, Any], chart_buffer: Optional[bytes] = None) -> Dict[str, Any]:
         """
         Send trading signal notification to all active chats
         
         Args:
             signal_data: Dictionary containing signal information
+            chart_buffer: Optional chart image as bytes buffer
             
         Returns:
             Dictionary with sending statistics
         """
-        return await self.notifier.send_signal_notification(signal_data)
+        return await self.notifier.send_signal_notification(signal_data, chart_buffer=chart_buffer)
     
     async def send_error_notification(self, error_type: str, error_message: str) -> Dict[str, Any]:
         """Send error notification to active chats"""

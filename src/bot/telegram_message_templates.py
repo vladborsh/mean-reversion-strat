@@ -22,6 +22,23 @@ class TelegramMessageTemplates:
         self.templates = {}
         self._setup_default_templates()
     
+    def _clean_symbol_name(self, symbol: str) -> str:
+        """
+        Clean symbol name for display (remove X suffix)
+        
+        Args:
+            symbol: Raw symbol name (e.g., 'EURUSDX', 'GOLDX')
+            
+        Returns:
+            Cleaned symbol name (e.g., 'EURUSD', 'GOLD')
+        """
+        # Remove trailing X from forex/commodity symbols
+        if symbol and symbol.endswith('X'):
+            # Keep X only for indices like 'DAX', 'FTMX'
+            if symbol not in ['DAX', 'FTMX', 'SPX', 'NDX']:
+                return symbol[:-1]
+        return symbol
+    
     def _setup_default_templates(self):
         """Setup default message templates"""
         self.templates = {
@@ -150,8 +167,11 @@ class TelegramMessageTemplates:
         
         # Format message with signal data
         try:
+            # Clean symbol name (remove X suffix)
+            clean_symbol = self._clean_symbol_name(signal_data.get('symbol', 'N/A'))
+            
             template['text'] = template['text'].format(
-                symbol=signal_data.get('symbol', 'N/A'),
+                symbol=clean_symbol,
                 entry_price=f"{signal_data.get('entry_price', 0):.4f}",
                 stop_loss=f"{signal_data.get('stop_loss', 0):.4f}",
                 take_profit=f"{signal_data.get('take_profit', 0):.4f}",
@@ -167,9 +187,10 @@ class TelegramMessageTemplates:
         except Exception as e:
             logger.error(f"Error formatting signal message: {e}")
             # Fallback to basic message
+            clean_symbol = self._clean_symbol_name(signal_data.get('symbol', 'N/A'))
             template = {
                 'text': f"🚨 *{direction} SIGNAL*\n\n"
-                        f"Symbol: {signal_data.get('symbol', 'N/A')}\n"
+                        f"Symbol: {clean_symbol}\n"
                         f"Entry: {signal_data.get('entry_price', 0):.4f}\n"
                         f"Time: {timestamp}",
                 'parse_mode': 'Markdown'

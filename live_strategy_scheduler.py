@@ -45,6 +45,7 @@ from src.strategy_config import DEFAULT_CONFIG
 from src.helpers import is_trading_hour, format_trading_session_info
 from src.capital_com_fetcher import create_capital_com_fetcher
 from src.bot.live_signal_detector import LiveSignalDetector
+from src.bot.signal_chart_generator import SignalChartGenerator
 from src.bot.telegram_bot import create_telegram_bot_from_env, TelegramBotManager
 from src.bot.signal_cache import create_signal_cache
 from src.symbol_config_manager import SymbolConfigManager
@@ -85,6 +86,9 @@ class LiveStrategyScheduler:
         
         # Initialize the live signal detector
         self.signal_detector = LiveSignalDetector()
+        
+        # Initialize the signal chart generator
+        self.chart_generator = SignalChartGenerator()
         
         # Initialize signal cache with persistence to prevent duplicate notifications
         # Use DynamoDB for persistence if available, otherwise fall back to in-memory
@@ -256,6 +260,7 @@ class LiveStrategyScheduler:
                 'data_points': len(data),
                 'strategy_params': strategy_params,
                 'signal': signal_result,
+                'data': data,  # Include data for chart generation
                 'message': f'Analysis completed for {symbol}'
             }
             
@@ -323,8 +328,26 @@ class LiveStrategyScheduler:
                 else:
                     logger.warning(f"⚠️ Failed to cache signal for {telegram_signal_data['symbol']} - continuing with send")
                 
-                # Send notification
-                result = await self.telegram_bot.send_signal_notification(telegram_signal_data)
+                # Generate chart for the signal
+                chart_buffer = None
+                try:
+                    data = analysis_result.get('data')
+                    if data is not None:
+                        chart_buffer = self.chart_generator.generate_signal_chart(
+                            data=data,
+                            signal_data=signal_data,
+                            strategy_params=analysis_result.get('strategy_params', {}),
+                            symbol=analysis_result.get('symbol')
+                        )
+                        if chart_buffer:
+                            logger.debug(f"📊 Chart generated for {telegram_signal_data['symbol']}")
+                        else:
+                            logger.warning(f"⚠️ Chart generation returned None for {telegram_signal_data['symbol']}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to generate chart: {e}")
+                
+                # Send notification with chart
+                result = await self.telegram_bot.send_signal_notification(telegram_signal_data, chart_buffer=chart_buffer)
                 logger.info(f"📱 Telegram signal sent to {result.get('sent', 0)} chats")
                 
                 if result.get('sent', 0) == 0:

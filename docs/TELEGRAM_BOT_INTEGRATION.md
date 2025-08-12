@@ -4,6 +4,7 @@ This documentation covers the Telegram bot integration for the Mean Reversion Tr
 
 ## Related Documentation
 
+- **[Signal Chart Generation](SIGNAL_CHART_GENERATION.md)** - Chart images sent with signal notifications
 - **[Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Container setup and deployment for the bot
 - **[Signal Cache Persistence](signal_cache_persistence.md)** - Persistent storage for duplicate signal prevention
 - **[Telegram DynamoDB Persistence](telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
