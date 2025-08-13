@@ -11,13 +11,19 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 import pandas as pd
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import mplfinance as mpf
 from datetime import datetime
 
-# Use non-interactive backend to avoid GUI dependencies
-matplotlib.use('Agg')
+try:
+    import matplotlib
+    # Use non-interactive backend to avoid GUI dependencies
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import mplfinance as mpf
+    MPLFINANCE_AVAILABLE = True
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"mplfinance not available for chart generation: {e}")
+    MPLFINANCE_AVAILABLE = False
 
 # Import indicators
 try:
@@ -36,6 +42,10 @@ class SignalChartGenerator:
     
     def __init__(self):
         """Initialize the chart generator with style settings"""
+        if not MPLFINANCE_AVAILABLE:
+            logger.warning("SignalChartGenerator initialized but mplfinance not available - charts will not be generated")
+            return
+            
         # Define custom style for professional appearance
         self.chart_style = mpf.make_mpf_style(
             base_mpf_style='charles',
@@ -176,6 +186,10 @@ class SignalChartGenerator:
         Returns:
             Chart image as bytes buffer or None if generation fails
         """
+        if not MPLFINANCE_AVAILABLE:
+            logger.debug("Chart generation skipped - mplfinance not available")
+            return None
+            
         try:
             # Prepare data with smart selection for better SL/TP visibility
             plot_data = self._prepare_chart_data(data, signal_data)

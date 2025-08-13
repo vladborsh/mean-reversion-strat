@@ -67,6 +67,7 @@ class CapitalComDataFetcher:
             'GBPUSD=X': 'GBPUSD',
             'USDJPY=X': 'USDJPY',
             'CHFUSD=X': 'CHFUSD',
+            'USDCHF=X': 'CHFUSD',  # USDCHF=X also maps to CHFUSD (inverted pair)
             'EURCHF=X': 'EURCHF',  # Added missing EURCHF mapping
             'AUDUSD=X': 'AUDUSD',
             'USDCAD=X': 'USDCAD',
