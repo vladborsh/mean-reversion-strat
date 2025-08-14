@@ -3,7 +3,7 @@
 Live Trading Strategy Scheduler
 
 This script runs the mean reversion strategy live on multiple symbols every 5 minutes.
-It loads optimized configurations from best_configs_balanced.json and executes
+It loads optimized configurations from assets_config_wr45.json (win rate >45%) and executes
 the strategy in real-time using Capital.com data.
 
 Features:
@@ -11,12 +11,10 @@ Features:
 - Loads 999 last candles for each symbol
 - Validates last candle is current (within 5 minutes of UTC time)
 - Trading hours validation (6:00-17:00 UTC)
-- Automatic symbol management from balanced config
-- R        logger.info("⏰ Schedule: Every 5 minutes (:00, :05, :10, :15, :20, etc.)")
-        logger.info("🕐 Trading hours: 6:00-17:00 UTC")
-        logger.info(f"📊 Symbols: {len(self.symbols_config)}")
-        logger.info(f"📱 Telegram notifications: {'Enabled' if self.enable_telegram else 'Disabled'}")
-        logger.info("\nPress Ctrl+C to stop gracefully...\n")me logging and monitoring
+- High-performance asset filtering (win rate >45%)
+- Real-time logging and monitoring
+- Telegram notifications for trading signals
+- Signal caching to prevent duplicate notifications
 """
 
 import time
@@ -74,11 +72,11 @@ class LiveStrategyScheduler:
         Initialize the live strategy scheduler
         
         Args:
-            config_file_path: Path to balanced config file (defaults to results/best_configs_balanced.json)
+            config_file_path: Path to asset config file (defaults to assets_config_wr45.json for win rate >45%)
             enable_telegram: Whether to enable Telegram notifications
         """
         self.config_file_path = config_file_path or os.path.join(
-            os.path.dirname(__file__), 'results', 'best_configs_balanced.json'
+            os.path.dirname(__file__), 'assets_config_wr45.json'
         )
         self.symbols_config = {}
         self.running = False

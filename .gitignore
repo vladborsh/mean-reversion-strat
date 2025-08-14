@@ -192,6 +192,10 @@ api_keys.txt
 .env.production
 .env.development
 
+# High-performance asset configurations (personalized)
+assets_config_highperf.json
+assets_config_wr45.json
+
 # Backtest results and outputs
 results/
 output/
