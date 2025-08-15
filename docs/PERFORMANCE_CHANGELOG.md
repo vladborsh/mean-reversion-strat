@@ -116,7 +116,7 @@ This changelog consolidates performance analysis reports, showing the evolution 
 ### Performance Results - Single Asset Focus
 
 **Test Configuration:**
-- **Asset:** EURUSD=X (5m timeframe)
+- **Asset:** EURUSD (5m timeframe)
 - **Date Range:** 2024-07-18 15:42 to 2025-07-18 15:42 UTC (1 year backtest)
 - **Risk per Trade:** 1%
 - **Data Source:** Capital.com

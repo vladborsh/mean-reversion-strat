@@ -107,7 +107,7 @@ cache = DataCache(transport=cache_transport)
 # Hyperparameter optimizer with transport types
 optimizer = HyperparameterOptimizer(
     data_source='forex',
-    symbol='EURUSD=X',
+    symbol='EURUSD',
     timeframe='15m',
     years=2,
     cache_transport_type='s3',
@@ -163,8 +163,8 @@ python cache_manager.py clear --cache-transport s3
 ### Invalidate Specific Cache
 ```bash
 # Invalidate cache for specific symbol
-python cache_manager.py invalidate --symbol EURUSD=X --cache-transport local
-python cache_manager.py invalidate --symbol EURUSD=X --cache-transport s3
+python cache_manager.py invalidate --symbol EURUSD --cache-transport local
+python cache_manager.py invalidate --symbol EURUSD --cache-transport s3
 ```
 
 ## S3 Storage Structure

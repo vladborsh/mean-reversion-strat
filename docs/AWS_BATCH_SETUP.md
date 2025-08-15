@@ -245,11 +245,11 @@ aws batch submit-job \
   --job-queue "mean-reversion-job-queue" \
   --job-definition "mean-reversion-optimization-fixed" \
   --container-overrides '{
-    "command": ["--grid-search", "focused", "--symbol", "EURUSD=X", "--timeframe", "5m", "--cache-transport", "s3", "--log-transport", "s3", "--quiet"]
+    "command": ["--grid-search", "focused", "--symbol", "EURUSD", "--timeframe", "5m", "--cache-transport", "s3", "--log-transport", "s3", "--quiet"]
   }' \
   --tags '{
     "Project": "MeanReversionStrategy",
-    "Symbol": "EURUSD=X"
+    "Symbol": "EURUSD"
   }'
 ```
 
@@ -284,7 +284,7 @@ Use the provided script to submit jobs for all major forex pairs:
 # Comprehensive batch job submission script
 
 # Configuration
-SYMBOLS=("EURUSD=X" "GBPUSD=X" "USDJPY=X" "AUDUSD=X" "BTC/USDT" "ETH/USDT")
+SYMBOLS=("EURUSD" "GBPUSD" "USDJPY" "AUDUSD" "BTC/USDT" "ETH/USDT")
 TIMEFRAMES=("15m" "1h")
 OPTIMIZATION_TYPES=("balanced" "focused")
 JOB_QUEUE="mean-reversion-job-queue"
@@ -630,11 +630,11 @@ def analyze_results(csv_file='aggregated_results.csv'):
                 # Try to extract from filename
                 filename = row['source_file']
                 if 'EURUSD' in filename:
-                    return 'EURUSD=X'
+                    return 'EURUSD'
                 elif 'GBPUSD' in filename:
-                    return 'GBPUSD=X'
+                    return 'GBPUSD'
                 elif 'USDJPY' in filename:
-                    return 'USDJPY=X'
+                    return 'USDJPY'
                 # Add more symbols as needed
             return 'Unknown'
         except:

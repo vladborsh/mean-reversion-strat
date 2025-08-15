@@ -51,7 +51,7 @@ python optimize_strategy.py --grid-search risk
 python optimize_strategy.py --random-search 100
 
 # Different symbols/timeframes
-python optimize_strategy.py --grid-search focused --symbol GBPUSD=X --timeframe 1h --years 2
+python optimize_strategy.py --grid-search focused --symbol GBPUSD --timeframe 1h --years 2
 ```
 
 #### Available Configurations

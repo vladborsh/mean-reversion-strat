@@ -16,7 +16,7 @@ def test_main_viz():
     print("Testing main visualization with fixed VWAP...")
     
     # Fetch data like main.py
-    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+    fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
     df = fetcher.fetch(years=2)
     
     # Calculate indicators like main.py

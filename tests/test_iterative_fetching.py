@@ -15,7 +15,7 @@ def test_iterative_fetching():
     print("Testing iterative data fetching...")
     
     # Test with a symbol that should have good data availability
-    fetcher = DataFetcher('forex', 'EURUSD=X', timeframe='15m')
+    fetcher = DataFetcher('forex', 'EURUSD', timeframe='15m')
     
     try:
         # Try to fetch 6 months of 15-minute data (should trigger iterative fetching)
@@ -44,7 +44,7 @@ def test_short_period():
     """Test normal fetching for a short period (should not use iterative)"""
     print("\nTesting normal fetching for short period...")
     
-    fetcher = DataFetcher('forex', 'EURUSD=X', timeframe='1h')
+    fetcher = DataFetcher('forex', 'EURUSD', timeframe='1h')
     
     try:
         # Try to fetch just 10 days of hourly data (should work normally)

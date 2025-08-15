@@ -58,7 +58,7 @@ podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy
 # Custom symbol and timeframe with S3 cache (uses .env file for AWS credentials)
 podman run --rm \
   -v $(pwd)/optimization:/app/optimization \
-  mean-reversion-strategy --quick-test --symbol GBPUSD=X --timeframe 1h --cache-transport s3 --log-transport local
+  mean-reversion-strategy --quick-test --symbol GBPUSD --timeframe 1h --cache-transport s3 --log-transport local
 
 # Random search optimization with S3 storage (uses .env file for AWS credentials)
 podman run --rm mean-reversion-strategy --random-search 50 --cache-transport s3 --log-transport s3

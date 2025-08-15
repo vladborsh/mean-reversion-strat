@@ -20,7 +20,7 @@ def simple_test():
     print("Testing data fetching...")
     
     try:
-        fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+        fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
         df = fetcher.fetch(years=1)  # Reduced to 1 year
         print(f"Data fetched successfully: {len(df)} rows")
         print(f"Data range: {df.index[0]} to {df.index[-1]}")

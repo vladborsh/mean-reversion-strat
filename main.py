@@ -35,15 +35,21 @@ def load_config_from_results(symbol: str, timeframe: str, preference: str) -> Op
     Load strategy configuration from results folder based on symbol, timeframe and preference.
     
     Args:
-        symbol: Trading symbol (e.g., 'EURUSD=X', 'AUDUSD=X')
+        symbol: Trading symbol (e.g., 'EURUSD', 'AUDUSD')
         timeframe: Trading timeframe (e.g., '5m', '15m')
         preference: Optimization preference ('balanced', 'pnl', 'drawdown')
     
     Returns:
         Configuration dictionary or None if not found
     """
-    # Convert symbol format: EURUSD=X -> EURUSDX
-    symbol_key = symbol.replace('=', '')
+    # Convert symbol format for config lookup: handle legacy and clean formats
+    # Remove =X suffix if present for backward compatibility
+    if symbol.endswith('=X'):
+        symbol_key = symbol[:-2] + 'X'
+    elif symbol.endswith('X'):
+        symbol_key = symbol
+    else:
+        symbol_key = symbol + 'X'
     config_key = f"{symbol_key}_{timeframe}"
     
     # Map preference to config file
@@ -267,18 +273,18 @@ if __name__ == '__main__':
         epilog="""
 Examples:
   # Use optimized configs from results folder
-  python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
-  python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl
-  python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+  python main.py --symbol EURUSD --timeframe 5m --preference balanced
+  python main.py --symbol AUDUSD --timeframe 5m --preference pnl
+  python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
   
   # Use default configuration (fallback)
-  python main.py --symbol BTCUSD=X --timeframe 15m
+  python main.py --symbol BTCUSD --timeframe 15m
         """
     )
     
     # Strategy configuration parameters
-    parser.add_argument('--symbol', default='EURUSD=X',
-                       help='Trading symbol (default: EURUSD=X)')
+    parser.add_argument('--symbol', default='EURUSD',
+                       help='Trading symbol (default: EURUSD)')
     parser.add_argument('--timeframe', default='5m',
                        choices=['5m', '15m', '1h'],
                        help='Data timeframe (default: 5m)')
@@ -362,7 +368,7 @@ Examples:
         print(f"📈 ACTUAL Performance:")
         print(f"   Final Balance: ${final_balance:,.2f}")
         print(f"   Actual PnL: ${actual_pnl:+,.2f}")
-        print(f"   Win Rate: {metrics.get('win_rate', 0):.1f}%")
+        print(f"   Win Rate: {metrics.get('win_rate', 0):.1%}")
         print(f"   Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}")
         print(f"   Max Drawdown: {metrics.get('max_drawdown', 0):.1f}%")
         print(f"   Total Trades: {len([t for t in trade_log if t.get('type') == 'exit'])}")

@@ -14,7 +14,7 @@ from src.visualization import plot_price_with_indicators, plot_price_with_vwap_e
 def test_vwap_visibility():
     """Test VWAP visibility in charts"""
     print("Fetching EUR/USD data...")
-    fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+    fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
     df = fetcher.fetch(years=1)
     print(f"Data loaded: {len(df)} rows")
     

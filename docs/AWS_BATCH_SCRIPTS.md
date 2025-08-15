@@ -26,7 +26,7 @@ Submits optimization jobs for all major forex pairs.
 ./scripts/submit_forex_jobs.sh 1h risk
 ```
 
-**Symbols covered:** EURUSD=X, GBPUSD=X, USDJPY=X, AUDUSD=X, USDCAD=X, USDCHF=X, NZDUSD=X, EURGBP=X, EURJPY=X, EURCHF=X, GBPJPY=X, BTCUSD=X, ETHUSD=X, GOLD=X, SILVER=X
+**Symbols covered:** EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, USDCHF, NZDUSD, EURGBP, EURJPY, EURCHF, GBPJPY, BTCUSD, ETHUSD, GOLD=X, SILVER=X
 
 ---
 
@@ -111,7 +111,7 @@ export AWS_REGION="your-region"
 Job submission scripts create CSV tracking files with format:
 ```
 job_id,job_name,symbol,timeframe,optimization_type,submitted_at
-abc123-def456,opt-EURUSD-X-balanced-20250724-161151,EURUSD=X,5m,balanced,2025-07-24T16:11:51Z
+abc123-def456,opt-EURUSD-X-balanced-20250724-161151,EURUSD,5m,balanced,2025-07-24T16:11:51Z
 ```
 
 These files can be used with monitoring scripts to track job batches.

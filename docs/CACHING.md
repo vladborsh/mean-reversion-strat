@@ -20,7 +20,7 @@ The Mean Reversion Strategy project includes an intelligent data caching system 
 from src.data_fetcher import DataFetcher
 
 # Caching is enabled by default
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
 data = fetcher.fetch(years=1)  # First call: fetches from API + caches
 data = fetcher.fetch(years=1)  # Second call: loads from cache (much faster)
 ```
@@ -28,7 +28,7 @@ data = fetcher.fetch(years=1)  # Second call: loads from cache (much faster)
 ### Cache Key Generation
 Cache keys are generated based on:
 - Data source (forex, crypto, indices)
-- Symbol (EURUSD=X, BTC/USDT, etc.)
+- Symbol (EURUSD, BTC/USDT, etc.)
 - Timeframe (15m, 1h, 4h, 1d)
 - Time period (years)
 - Additional parameters (exchange for crypto)
@@ -46,14 +46,14 @@ Cache keys are generated based on:
 ### Basic Usage with Caching
 ```python
 # Default: caching enabled
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h', use_cache=True)
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h', use_cache=True)
 data = fetcher.fetch(years=2)
 ```
 
 ### Disable Caching
 ```python
 # Disable caching for always-fresh data
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h', use_cache=False)
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h', use_cache=False)
 data = fetcher.fetch(years=2)
 ```
 
@@ -97,7 +97,7 @@ python cache_manager.py invalidate
 
 #### Clear Cache for Specific Symbol
 ```python
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
 fetcher.invalidate_cache_for_symbol(years=1)  # Clear specific period
 fetcher.invalidate_cache_for_symbol()         # Clear all periods
 ```
@@ -132,9 +132,9 @@ DataFetcher.clear_global_cache(max_age_days=30)
 ```
 cache/
 ├── .cache_metadata.json
-├── a1b2c3d4e5f6.pkl      # EURUSD=X 1h 1yr
+├── a1b2c3d4e5f6.pkl      # EURUSD 1h 1yr
 ├── f6e5d4c3b2a1.pkl      # BTCUSDT 15m 1yr
-└── 9z8y7x6w5v4u.pkl      # GBPUSD=X 4h 2yr
+└── 9z8y7x6w5v4u.pkl      # GBPUSD 4h 2yr
 ```
 
 Each cache file contains:
@@ -177,7 +177,7 @@ cache = DataCache(cache_dir='/custom/path/cache')
 ### Cache Not Working
 ```python
 # Check if cache is enabled
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
 print(f"Cache enabled: {fetcher.use_cache}")
 print(f"Cache object: {fetcher.cache is not None}")
 ```
@@ -195,7 +195,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # Cache operations will now show detailed logs
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
 data = fetcher.fetch(years=1)
 ```
 

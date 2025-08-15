@@ -61,41 +61,10 @@ class CapitalComDataFetcher:
             '1d': 'DAY'
         }
         
-        # Common forex pairs mapping (Capital.com epic format)
+        # Forex pairs that need special mapping (Capital.com epic format)
+        # Only include pairs that actually need transformation
         self.forex_mapping = {
-            'EURUSD=X': 'EURUSD',
-            'GBPUSD=X': 'GBPUSD',
-            'USDJPY=X': 'USDJPY',
-            'CHFUSD=X': 'CHFUSD',
-            'USDCHF=X': 'CHFUSD',  # USDCHF=X also maps to CHFUSD (inverted pair)
-            'EURCHF=X': 'EURCHF',  # Added missing EURCHF mapping
-            'AUDUSD=X': 'AUDUSD',
-            'USDCAD=X': 'USDCAD',
-            'NZDUSD=X': 'NZDUSD',
-            'EURJPY=X': 'EURJPY',
-            'GBPJPY=X': 'GBPJPY',
-            'EURGBP=X': 'EURGBP',
-            'EURUSD': 'EURUSD',
-            'GBPUSD': 'GBPUSD',
-            'USDJPY': 'USDJPY',
-            'USDCHF': 'CHFUSD',
-            'EURCHF': 'EURCHF',    # Added missing EURCHF mapping
-            'AUDUSD': 'AUDUSD',
-            'USDCAD': 'USDCAD',
-            'NZDUSD': 'NZDUSD',
-            'EURJPY': 'EURJPY',
-            'GBPJPY': 'GBPJPY',
-            'EURGBP': 'EURGBP',
-            # Common variations for config compatibility
-            'EURCHFX': 'EURCHF',
-            'EURJPYX': 'EURJPY',
-            'EURGBPX': 'EURGBP',
-            'GBPJPYX': 'GBPJPY',
-            'GBPUSDX': 'GBPUSD',
-            'AUDUSDX': 'AUDUSD',
-            'NZDUSDX': 'NZDUSD',
-            'USDCADX': 'CADUSD',
-            'EURUSDX': 'EURUSD'
+            'USDCHF': 'CHFUSD',  # Capital.com uses inverted pair
         }
         
         # Common indices mapping
@@ -112,50 +81,26 @@ class CapitalComDataFetcher:
             'DIA': 'US30'
         }
         
-        # Common cryptocurrency mapping (discovered via API search)
+        # Cryptocurrency mapping (only transformations needed)
         self.crypto_mapping = {
-            'BITCOIN=X': 'BTCUSD',
-            'BTC=X': 'BTCUSD', 
-            'BTCUSD=X': 'BTCUSD',
             'BITCOIN': 'BTCUSD',
-            'BTCUSD': 'BTCUSD',
             'BTC': 'BTCUSD',
-            'BTCUSDX': 'BTCUSD',  # Added for config compatibility
-            'ETHEREUM=X': 'ETHUSD',
-            'ETH=X': 'ETHUSD',
-            'ETHUSD=X': 'ETHUSD',
             'ETHEREUM': 'ETHUSD',
-            'ETHUSD': 'ETHUSD',
             'ETH': 'ETHUSD',
-            'ETHUSDX': 'ETHUSD',  # Added for config compatibility
-            'LITECOIN=X': 'LTCUSD',
-            'LTC=X': 'LTCUSD',
             'LITECOIN': 'LTCUSD',
-            'LTCUSD': 'LTCUSD',
             'LTC': 'LTCUSD',
-            'RIPPLE=X': 'XRPUSD',
-            'XRP=X': 'XRPUSD',
             'RIPPLE': 'XRPUSD',
-            'XRPUSD': 'XRPUSD',
             'XRP': 'XRPUSD'
         }
         
-        # Common precious metals/commodities mapping (discovered via API search)
+        # Precious metals/commodities mapping (only transformations needed)
         self.commodities_mapping = {
-            'GOLD=X': 'GOLD',
-            'GC=F': 'GOLD',
             'XAUUSD': 'GOLD',
             'XAU_USD': 'GOLD',
             'GOLD_USD': 'GOLD',
-            'GOLD': 'GOLD',
-            'GOLDX': 'GOLD',  # Added for config compatibility
-            'SILVER=X': 'SILVER',
-            'SI=F': 'SILVER',
             'XAGUSD': 'SILVER',
             'XAG_USD': 'SILVER',
-            'SILVER_USD': 'SILVER',
-            'SILVER': 'SILVER',
-            'SILVERX': 'SILVER'  # Added for config compatibility
+            'SILVER_USD': 'SILVER'
         }
     
     def _wait_for_rate_limit(self):
@@ -312,7 +257,7 @@ class CapitalComDataFetcher:
                 return mapped
         
         # Check if this looks like a precious metals symbol regardless of asset_type
-        metals_indicators = ['GOLD', 'SILVER', 'XAU', 'XAG', 'GC=F', 'SI=F']
+        metals_indicators = ['GOLD', 'SILVER', 'XAU', 'XAG']
         if any(indicator in symbol.upper() for indicator in metals_indicators):
             # Force commodities mapping for obvious metals symbols
             mapped = self.commodities_mapping.get(symbol, symbol)
@@ -426,7 +371,7 @@ class CapitalComDataFetcher:
             is_likely_crypto = any(indicator in symbol.upper() for indicator in crypto_indicators)
             
             # Auto-detect precious metals symbols and override asset_type if needed
-            metals_indicators = ['GOLD', 'SILVER', 'XAU', 'XAG', 'GC=F', 'SI=F']
+            metals_indicators = ['GOLD', 'SILVER', 'XAU', 'XAG']
             is_likely_metals = any(indicator in symbol.upper() for indicator in metals_indicators)
             
             if is_likely_crypto and asset_type not in ['crypto', 'cryptocurrency', 'cryptocurrencies']:

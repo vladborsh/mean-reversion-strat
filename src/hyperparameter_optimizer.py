@@ -126,7 +126,7 @@ class HyperparameterOptimizer:
     def __init__(
         self,
         data_source: str = 'forex',
-        symbol: str = 'EURUSD=X',
+        symbol: str = 'EURUSD',
         timeframe: str = '15m',
         years: int = 2,
         optimization_dir: Optional[str] = None,
@@ -947,7 +947,7 @@ def main():
     # Initialize optimizer
     optimizer = HyperparameterOptimizer(
         data_source='forex',
-        symbol='EURUSD=X',
+        symbol='EURUSD',
         timeframe='15m',
         years=2
     )

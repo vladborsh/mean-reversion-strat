@@ -52,7 +52,7 @@ class DataCache:
         
         Args:
             source (str): Data source (forex, crypto, indices)
-            symbol (str): Trading symbol (e.g., 'EURUSD=X')
+            symbol (str): Trading symbol (e.g., 'EURUSD')
             timeframe (str): Data timeframe (e.g., '15m', '1h', '4h', '1d')
             years (int): Number of years of data requested
             additional_params (dict, optional): Additional parameters that affect data

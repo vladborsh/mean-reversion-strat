@@ -148,7 +148,7 @@ See **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** for detaile
 
 ```bash
 # Run with optimized configuration (recommended)
-python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
+python main.py --symbol EURUSD --timeframe 5m --preference balanced
 
 # Run the main strategy with default parameters (fallback)
 python main.py
@@ -218,10 +218,10 @@ podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy
 podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --grid-search focused --plot-equity-curves
 
 # Run with custom symbol and timeframe
-podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --quick-test --symbol GBPUSD=X --timeframe 1h
+podman run --rm -v $(pwd)/optimization:/app/optimization mean-reversion-strategy --quick-test --symbol GBPUSD --timeframe 1h
 
 # Run focused grid search with S3 transport for cache and logs
-podman run --rm mean-reversion-strategy --grid-search focused --symbol GBPUSD=X --timeframe 5m --cache-transport s3 --log-transport s3
+podman run --rm mean-reversion-strategy --grid-search focused --symbol GBPUSD --timeframe 5m --cache-transport s3 --log-transport s3
 ```
 
 ### Helper Script
@@ -254,18 +254,18 @@ The main strategy now supports using **pre-optimized configurations** from the r
 
 ```bash
 # Use optimized configurations based on preference
-python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
-python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl  
-python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+python main.py --symbol EURUSD --timeframe 5m --preference balanced
+python main.py --symbol AUDUSD --timeframe 5m --preference pnl  
+python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
 
 # Run with S3 storage for cache and logs
-python main.py --symbol EURGBP=X --timeframe 5m --preference balanced --cache-transport s3 --log-transport s3
+python main.py --symbol EURGBP --timeframe 5m --preference balanced --cache-transport s3 --log-transport s3
 
 # Mixed storage: local cache, S3 logs
-python main.py --symbol NZDUSD=X --timeframe 5m --preference drawdown --cache-transport local --log-transport s3
+python main.py --symbol NZDUSD --timeframe 5m --preference drawdown --cache-transport local --log-transport s3
 
 # Fallback to default config if optimized config not found
-python main.py --symbol BTCUSD=X --timeframe 15m --preference balanced
+python main.py --symbol BTCUSD --timeframe 15m --preference balanced
 ```
 
 **New Arguments:**
@@ -273,7 +273,7 @@ python main.py --symbol BTCUSD=X --timeframe 15m --preference balanced
   - `balanced`: Best overall risk-adjusted performance
   - `pnl`: Maximum profit potential
   - `drawdown`: Minimum maximum drawdown
-- `--symbol`: Trading symbol (e.g., `EURUSD=X`, `AUDUSD=X`, `GBPUSD=X`)
+- `--symbol`: Trading symbol (e.g., `EURUSD`, `AUDUSD`, `GBPUSD`)
 - `--timeframe`: Data timeframe (`5m`, `15m`, `1h`)
 
 The script automatically loads optimized hyperparameters from the `results/` folder based on your symbol, timeframe, and preference. If no optimized configuration is found, it falls back to default settings.
@@ -329,14 +329,14 @@ python cache_manager.py clear --cache-transport s3
 python cache_manager.py clear --log-transport s3
 
 # Invalidate cache for specific symbol
-python cache_manager.py invalidate --symbol EURUSD=X --cache-transport local
+python cache_manager.py invalidate --symbol EURUSD --cache-transport local
 ```
 
 ### Data Fetching
 
 ```bash
 # Fetch forex data (Capital.com or fallback)
-python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h').fetch(years=2); print(df.head())"
+python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h').fetch(years=2); print(df.head())"
 
 # Fetch crypto data
 python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='crypto', symbol='BTC/USDT', timeframe='1h').fetch(years=1); print(df.head())"

@@ -18,7 +18,7 @@ def test_multi_provider_forex():
     # Get free API key from: https://www.alphavantage.co/support/#api-key
     api_key = os.getenv('ALPHA_VANTAGE_API_KEY', 'demo')  # Use 'demo' for testing (limited)
     
-    fetcher = DataFetcher('forex', 'EURUSD=X', timeframe='15m', api_key=api_key)
+    fetcher = DataFetcher('forex', 'EURUSD', timeframe='15m', api_key=api_key)
     
     try:
         # Try to fetch 6 months of 15-minute data using multiple providers
@@ -47,7 +47,7 @@ def test_yfinance_only():
     """Test Yahoo Finance only for comparison"""
     print("\nTesting Yahoo Finance only (short period)...")
     
-    fetcher = DataFetcher('forex', 'EURUSD=X', timeframe='15m')
+    fetcher = DataFetcher('forex', 'EURUSD', timeframe='15m')
     
     try:
         # Force use of only Yahoo Finance for 30 days

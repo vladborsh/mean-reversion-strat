@@ -35,7 +35,7 @@ The CSV files contain the following columns:
 
 ### Order Tracking
 - `optimization_run`: Optimization run number
-- `asset`: Trading symbol (e.g., EURUSD=X)
+- `asset`: Trading symbol (e.g., EURUSD)
 - `timeframe`: Trading timeframe (e.g., 15m, 1h)
 
 ### Order Timing
@@ -92,7 +92,7 @@ The CSV files contain the following columns:
 python optimize_strategy.py --quick-test
 
 # Grid search with specific asset
-python optimize_strategy.py --grid-search focused --symbol GBPUSD=X --timeframe 1h
+python optimize_strategy.py --grid-search focused --symbol GBPUSD --timeframe 1h
 
 # Random search with S3 storage
 python optimize_strategy.py --random-search 50 --log-transport s3

@@ -22,30 +22,34 @@ class SymbolConfigManager:
     @staticmethod
     def convert_symbol_for_fetching(symbol: str) -> str:
         """
-        Convert symbol from config format to data fetching format
+        Convert symbol from config format to clean data fetching format
         
         Args:
-            symbol: Symbol from config (e.g., 'AUDUSDX', 'GOLDX', 'SILVERX')
+            symbol: Symbol from config (e.g., 'AUDUSD', 'GOLD', 'SILVER' or legacy 'AUDUSDX', 'GOLDX', 'SILVERX')
             
         Returns:
-            Symbol for data fetching (e.g., 'AUDUSD=X', 'GOLD=X', 'SILVER=X')
+            Symbol for data fetching (e.g., 'AUDUSD', 'GOLD', 'SILVER')
         """
-        # Special mappings for commodities
-        special_mappings = {
-            'GOLDX': 'GOLD=X',
-            'SILVERX': 'SILVER=X',
-            'BTCUSDX': 'BTC=X',
-            'ETHUSDX': 'ETH=X'
+        # Handle legacy X format for backward compatibility
+        legacy_mappings = {
+            'GOLDX': 'GOLD',
+            'SILVERX': 'SILVER',
+            'BTCUSDX': 'BTCUSD',
+            'ETHUSDX': 'ETHUSD'
         }
         
-        if symbol in special_mappings:
-            return special_mappings[symbol]
+        if symbol in legacy_mappings:
+            return legacy_mappings[symbol]
         
-        # Standard forex conversion (AUDUSDX -> AUDUSD=X)
+        # Legacy forex conversion (AUDUSDX -> AUDUSD)
         if symbol.endswith('X') and len(symbol) == 7:
-            return symbol[:-1] + '=X'
+            return symbol[:-1]
         
-        # Return as-is if no conversion needed
+        # Remove =X suffix if present (for backward compatibility)
+        if symbol.endswith('=X'):
+            return symbol[:-2]
+        
+        # Return as-is for clean format
         return symbol
     
     @staticmethod
@@ -112,12 +116,12 @@ def load_symbol_configs(config_file_path: str) -> Dict[str, Dict[str, Any]]:
 
 def convert_symbol_for_fetching(symbol: str) -> str:
     """
-    Convenience function to convert symbol format for data fetching
+    Convenience function to convert symbol format for clean data fetching
     
     Args:
-        symbol: Symbol from config (e.g., 'AUDUSDX', 'GOLDX', 'SILVERX')
+        symbol: Symbol from config (e.g., 'AUDUSD', 'GOLD', 'SILVER' or legacy 'AUDUSDX', 'GOLDX', 'SILVERX')
         
     Returns:
-        Symbol for data fetching (e.g., 'AUDUSD=X', 'GOLD=X', 'SILVER=X')
+        Symbol for data fetching (e.g., 'AUDUSD', 'GOLD', 'SILVER')
     """
     return SymbolConfigManager.convert_symbol_for_fetching(symbol)

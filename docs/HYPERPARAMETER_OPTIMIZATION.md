@@ -29,9 +29,9 @@ For immediate use with optimized parameters:
 
 ```bash
 # Use optimized configurations from results folder
-python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
-python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl
-python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+python main.py --symbol EURUSD --timeframe 5m --preference balanced
+python main.py --symbol AUDUSD --timeframe 5m --preference pnl
+python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
 ```
 
 ### 2. Running New Optimizations
@@ -55,7 +55,7 @@ python optimize_strategy.py --grid-search risk
 python optimize_strategy.py --random-search 100
 
 # Different symbols and timeframes
-python optimize_strategy.py --grid-search focused --symbol GBPUSD=X --timeframe 1h
+python optimize_strategy.py --grid-search focused --symbol GBPUSD --timeframe 1h
 
 # Use specific optimization objective
 python optimize_strategy.py --grid-search focused --sort-objective max_sharpe
@@ -70,7 +70,7 @@ from src.optimization_configs import OPTIMIZATION_CONFIGS
 # Initialize optimizer
 optimizer = HyperparameterOptimizer(
     data_source='forex',
-    symbol='EURUSD=X',
+    symbol='EURUSD',
     timeframe='15m',
     years=2
 )
@@ -282,9 +282,9 @@ python optimize_strategy.py --grid-search high_vol --years 1
 
 ```bash
 # Test on different forex pairs
-python optimize_strategy.py --grid-search focused --symbol GBPUSD=X
-python optimize_strategy.py --grid-search focused --symbol USDJPY=X
-python optimize_strategy.py --grid-search focused --symbol AUDUSD=X
+python optimize_strategy.py --grid-search focused --symbol GBPUSD
+python optimize_strategy.py --grid-search focused --symbol USDJPY
+python optimize_strategy.py --grid-search focused --symbol AUDUSD
 ```
 
 ### 4. Timeframe Comparison
@@ -312,7 +312,7 @@ custom_grid = {
 
 # Run optimization
 optimizer = HyperparameterOptimizer(
-    symbol='EURUSD=X',
+    symbol='EURUSD',
     timeframe='15m',
     years=2
 )
@@ -342,7 +342,7 @@ best_by_custom = results[0]
 
 ```python
 # Process multiple symbols/timeframes
-symbols = ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X']
+symbols = ['EURUSD', 'GBPUSD', 'USDJPY']
 timeframes = ['15m', '1h']
 
 for symbol in symbols:
@@ -410,9 +410,9 @@ The main strategy script now supports automatic loading of optimized configurati
 
 ```bash
 # Use optimized configurations from results folder
-python main.py --symbol EURUSD=X --timeframe 5m --preference balanced
-python main.py --symbol AUDUSD=X --timeframe 5m --preference pnl
-python main.py --symbol GBPUSD=X --timeframe 5m --preference drawdown
+python main.py --symbol EURUSD --timeframe 5m --preference balanced
+python main.py --symbol AUDUSD --timeframe 5m --preference pnl
+python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
 ```
 
 ### Configuration Selection Types
@@ -445,8 +445,8 @@ Based on the current results folder, optimized configurations are available for:
 **Timeframes**: `5m` (primary), some `15m` and `1h`
 
 **Assets**:
-- **Forex**: EURUSD=X, AUDUSD=X, GBPUSD=X, EURGBP=X, EURJPY=X, NZDUSD=X, USDCAD=X, USDCHF=X, USDJPY=X, EURCHF=X, GBPJPY=X
-- **Crypto**: BTCUSD=X, ETHUSD=X  
+- **Forex**: EURUSD, AUDUSD, GBPUSD, EURGBP, EURJPY, NZDUSD, USDCAD, USDCHF, USDJPY, EURCHF, GBPJPY
+- **Crypto**: BTCUSD, ETHUSD  
 - **Commodities**: GOLD=X, SILVER=X
 
 ### Configuration Structure

@@ -10,7 +10,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 
 def test_imports():
     """Test that all required modules can be imported"""
     try:
-        import yfinance as yf
         import pandas as pd
         import numpy as np
         import matplotlib.pyplot as plt
@@ -26,7 +25,7 @@ def test_data_fetcher():
     """Test data fetching functionality"""
     try:
         from src.data_fetcher import DataFetcher
-        fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1d')
+        fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1d')
         df = fetcher.fetch(years=0.1)  # Just a few days for testing
         print(f"✓ Data fetcher works: {len(df)} rows fetched")
         return True

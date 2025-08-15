@@ -19,7 +19,7 @@ export CAPITAL_COM_DEMO="true"  # Use demo environment
 from src.data_fetcher import DataFetcher
 
 # Automatic Capital.com integration
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
+fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
 data = fetcher.fetch(years=2)
 ```
 
@@ -133,7 +133,7 @@ The system translates between common symbol formats and Capital.com epics:
 
 | Input Format | Asset Type | Capital.com Epic | Notes |
 |--------------|------------|------------------|-------|
-| `EURUSD=X` | Forex | `EURUSD` | Strip Yahoo suffix |
+| `EURUSD` | Forex | `EURUSD` | Strip Yahoo suffix |
 | `EURUSD` | Forex | `EURUSD` | Direct mapping |
 | `^GSPC` | Index | `US500` | S&P 500 mapping |
 | `SPY` | Index | `US500` | ETF to index |
@@ -211,7 +211,7 @@ The Capital.com fetcher integrates seamlessly with the project's caching system:
 
 ```python
 # Automatic caching
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X', use_cache=True)
+fetcher = DataFetcher(source='forex', symbol='EURUSD', use_cache=True)
 data1 = fetcher.fetch(years=1)  # API call (~3 seconds)
 data2 = fetcher.fetch(years=1)  # Cache hit (~0.1 seconds)
 ```
@@ -268,7 +268,7 @@ with fetcher:
 ```python
 from src.data_fetcher import DataFetcher
 
-fetcher = DataFetcher(source='forex', symbol='EURUSD=X')
+fetcher = DataFetcher(source='forex', symbol='EURUSD')
 print(f"Provider order: {fetcher.provider_priority['forex']['1h']}")
 # Should show: ['capital_com', 'yfinance', 'alpha_vantage']
 ```

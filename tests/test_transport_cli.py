@@ -47,7 +47,7 @@ def test_data_fetcher_with_transport():
     # Test with local transport
     fetcher_local = DataFetcher(
         source='forex',
-        symbol='EURUSD=X', 
+        symbol='EURUSD', 
         timeframe='1h',
         use_cache=True,
         cache_transport_type='local'
@@ -57,7 +57,7 @@ def test_data_fetcher_with_transport():
     # Test with S3 transport (should fallback to local)
     fetcher_s3 = DataFetcher(
         source='forex',
-        symbol='EURUSD=X',
+        symbol='EURUSD',
         timeframe='1h', 
         use_cache=True,
         cache_transport_type='s3'
