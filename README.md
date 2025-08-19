@@ -334,12 +334,25 @@ python cache_manager.py invalidate --symbol EURUSD --cache-transport local
 
 ### Data Fetching
 
+#### Using Years (Backward Compatible)
 ```bash
 # Fetch forex data (Capital.com or fallback)
 python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h').fetch(years=2); print(df.head())"
 
 # Fetch crypto data
 python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='crypto', symbol='BTC/USDT', timeframe='1h').fetch(years=1); print(df.head())"
+```
+
+#### Using Date Ranges (NEW)
+```bash
+# Fetch data by specific date range
+python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h').fetch(start_date='2024-01-01', end_date='2024-12-31'); print(df.head())"
+
+# Fetch from specific date to now (end_date defaults to current time)
+python -c "from src.data_fetcher import DataFetcher; df = DataFetcher(source='crypto', symbol='BTC/USDT', timeframe='1h').fetch(start_date='2024-06-01'); print(df.head())"
+
+# Using datetime objects for precise control
+python -c "from src.data_fetcher import DataFetcher; from datetime import datetime; df = DataFetcher(source='indices', symbol='^GSPC', timeframe='1d').fetch(start_date=datetime(2024, 1, 1), end_date=datetime(2024, 6, 30)); print(df.head())"
 ```
 
 ## Data Sources and Providers
@@ -349,6 +362,21 @@ The strategy supports multiple data providers with automatic fallback:
 1. **Capital.com** (Primary for Forex/Indices) - Professional institutional data
 2. **Yahoo Finance** (Fallback) - Reliable free data
 3. **CCXT/Binance** (Primary for Crypto) - Real-time exchange data
+
+### Flexible Date Range Support
+
+All data fetchers now support flexible date range specification:
+
+- **Years-based** (backward compatible): `fetch(years=2)` - Fetches 2 years of historical data
+- **Date range**: `fetch(start_date='2024-01-01', end_date='2024-12-31')` - Fetches specific date range
+- **Start date only**: `fetch(start_date='2024-06-01')` - Fetches from date to current time
+- **Default behavior**: `fetch()` - Fetches 3 years of data (default)
+
+Date formats supported:
+- ISO string format: `'2024-01-01'` or `'2024-01-01T10:00:00'`
+- Python datetime objects: `datetime(2024, 1, 1)`
+
+For detailed documentation, see [Data Fetching Guide](docs/DATA_FETCHING_GUIDE.md).
 
 ## Optimization Framework
 

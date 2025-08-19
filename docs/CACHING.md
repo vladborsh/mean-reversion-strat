@@ -102,6 +102,19 @@ fetcher.invalidate_cache_for_symbol(years=1)  # Clear specific period
 fetcher.invalidate_cache_for_symbol()         # Clear all periods
 ```
 
+#### Cache Behavior with Date Ranges
+
+The caching system creates unique cache keys for different date ranges:
+
+```python
+# These create different cache entries:
+data1 = fetcher.fetch(start_date='2024-01-01', end_date='2024-03-31')  # Q1 2024
+data2 = fetcher.fetch(start_date='2024-04-01', end_date='2024-06-30')  # Q2 2024
+data3 = fetcher.fetch(start_date='2024-01-01', end_date='2024-06-30')  # H1 2024
+
+# Each date range is cached independently for maximum flexibility
+```
+
 #### Global Cache Operations
 ```python
 from src.data_fetcher import DataFetcher

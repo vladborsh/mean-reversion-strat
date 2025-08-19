@@ -210,13 +210,19 @@ if not data:
 The Capital.com fetcher integrates seamlessly with the project's caching system:
 
 ```python
-# Automatic caching
+# Automatic caching with years
 fetcher = DataFetcher(source='forex', symbol='EURUSD', use_cache=True)
 data1 = fetcher.fetch(years=1)  # API call (~3 seconds)
 data2 = fetcher.fetch(years=1)  # Cache hit (~0.1 seconds)
+
+# Automatic caching with date ranges (NEW)
+data3 = fetcher.fetch(start_date='2024-01-01', end_date='2024-06-30')  # API call
+data4 = fetcher.fetch(start_date='2024-01-01', end_date='2024-06-30')  # Cache hit!
 ```
 
-**Cache Key Format**: `capital_com_EURUSD_1h_20240101_20250101_forex_hash`
+**Cache Key Format**: 
+- Years-based: `capital_com_EURUSD_1h_years_1_hash`
+- Date range: `capital_com_EURUSD_1h_dates_20240101_20240630_hash`
 
 ### Performance Optimization Tips
 

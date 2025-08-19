@@ -2,6 +2,7 @@ import pandas as pd
 import time
 import requests
 from datetime import datetime, timedelta
+from typing import Optional, Union
 
 try:
     import ccxt
@@ -66,17 +67,100 @@ class DataFetcher:
         if (self.source in ['forex', 'indices']) and CapitalComDataFetcher is None:
             print('Warning: Capital.com fetcher not available for forex/indices data fetching')
 
-    def fetch(self, years=3):
-        """Fetch data using multiple providers with fallback strategy and caching"""
+    def _parse_date(self, date_input: Union[str, datetime, None]) -> Optional[datetime]:
+        """Parse date input into datetime object"""
+        if date_input is None:
+            return None
+        
+        if isinstance(date_input, datetime):
+            return date_input
+        
+        if isinstance(date_input, str):
+            try:
+                # Try parsing ISO format dates
+                if 'T' in date_input:
+                    return datetime.fromisoformat(date_input.replace('Z', '+00:00'))
+                else:
+                    return datetime.fromisoformat(date_input)
+            except ValueError:
+                try:
+                    # Try parsing common formats
+                    return datetime.strptime(date_input, '%Y-%m-%d')
+                except ValueError:
+                    raise ValueError(f"Unable to parse date: {date_input}. Use ISO format like '2023-01-01' or '2023-01-01T10:00:00'")
+        
+        raise ValueError(f"Invalid date type: {type(date_input)}. Use string or datetime object.")
+    
+    def fetch(self, years: Optional[Union[int, float]] = None, 
+             start_date: Optional[Union[str, datetime]] = None, 
+             end_date: Optional[Union[str, datetime]] = None):
+        """Fetch data using multiple providers with fallback strategy and caching
+        
+        Args:
+            years: Number of years of data to fetch (backward compatibility)
+            start_date: Start date for data fetching (string or datetime)
+            end_date: End date for data fetching (string or datetime)
+            
+        Note:
+            - If years is provided, start_date and end_date are ignored
+            - If start_date and end_date are provided, years is ignored
+            - If only start_date is provided, end_date defaults to current time
+            - If only end_date is provided, raises ValueError
+            - If none provided, defaults to years=3
+        """
+        
+        # Parse and validate date parameters
+        parsed_start_date = self._parse_date(start_date)
+        parsed_end_date = self._parse_date(end_date)
+        
+        # Parameter validation and resolution
+        if years is not None:
+            # Use years parameter (backward compatibility)
+            if start_date is not None or end_date is not None:
+                print("⚠️  Both years and date range specified. Using years parameter for backward compatibility.")
+            actual_years = years
+            actual_start_date = None
+            actual_end_date = None
+            date_mode = False
+        elif start_date is not None or end_date is not None:
+            # Use date range mode
+            if start_date is not None and end_date is None:
+                # Default end_date to current time
+                parsed_end_date = datetime.utcnow()
+                print(f"📅 End date not specified, using current time: {parsed_end_date.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+            elif start_date is None and end_date is not None:
+                raise ValueError("If end_date is specified, start_date must also be provided")
+            
+            # Validate date range
+            if parsed_start_date >= parsed_end_date:
+                raise ValueError(f"Start date ({parsed_start_date}) must be before end date ({parsed_end_date})")
+            
+            actual_years = None
+            actual_start_date = parsed_start_date
+            actual_end_date = parsed_end_date
+            date_mode = True
+        else:
+            # Default to 3 years
+            actual_years = 3
+            actual_start_date = None
+            actual_end_date = None
+            date_mode = False
+            print("📅 No date parameters specified, defaulting to 3 years of data")
         
         # Try to get data from cache first
         if self.use_cache and self.cache:
-            print(f"🔍 Checking cache for {years} years of {self.timeframe} {self.source} data for {self.symbol}")
+            if date_mode:
+                print(f"🔍 Checking cache for {self.timeframe} {self.source} data for {self.symbol} from {actual_start_date.strftime('%Y-%m-%d')} to {actual_end_date.strftime('%Y-%m-%d')}")
+            else:
+                print(f"🔍 Checking cache for {actual_years} years of {self.timeframe} {self.source} data for {self.symbol}")
+            
             cached_data = self.cache.get(
                 source=self.source,
                 symbol=self.symbol, 
                 timeframe=self.timeframe,
-                years=years,
+                years=actual_years,
+                start_date=actual_start_date,
+                end_date=actual_end_date,
                 additional_params={'exchange': self.exchange} if self.source == 'crypto' else None
             )
             
@@ -88,7 +172,10 @@ class DataFetcher:
         
         providers = self.provider_priorities.get(self.source, {}).get(self.timeframe, ['ccxt'])
         
-        print(f"Attempting to fetch {years} years of {self.timeframe} {self.source} data for {self.symbol}")
+        if date_mode:
+            print(f"Attempting to fetch {self.timeframe} {self.source} data for {self.symbol} from {actual_start_date.strftime('%Y-%m-%d')} to {actual_end_date.strftime('%Y-%m-%d')}")
+        else:
+            print(f"Attempting to fetch {actual_years} years of {self.timeframe} {self.source} data for {self.symbol}")
         print(f"Provider priority order: {providers}")
         
         last_error = None
@@ -97,11 +184,11 @@ class DataFetcher:
                 print(f"\n🔄 Trying provider: {provider}")
                 
                 if provider == 'ccxt':
-                    result = self._fetch_ccxt(years)
+                    result = self._fetch_ccxt(actual_years, actual_start_date, actual_end_date)
                 elif provider == 'capital_com':
-                    result = self._fetch_capital_com(years)
+                    result = self._fetch_capital_com(actual_years, actual_start_date, actual_end_date)
                 elif provider == 'fxcm_rest':
-                    result = self._fetch_fxcm_rest(years)
+                    result = self._fetch_fxcm_rest(actual_years, actual_start_date, actual_end_date)
                 else:
                     print(f"Unknown provider: {provider}")
                     continue
@@ -116,7 +203,9 @@ class DataFetcher:
                             source=self.source,
                             symbol=self.symbol,
                             timeframe=self.timeframe,
-                            years=years,
+                            years=actual_years,
+                            start_date=actual_start_date,
+                            end_date=actual_end_date,
                             data=result,
                             additional_params={'exchange': self.exchange} if self.source == 'crypto' else None,
                             metadata={'provider': provider, 'fetch_time': datetime.now().isoformat()}
@@ -193,7 +282,7 @@ class DataFetcher:
         cache = get_global_cache()
         cache.clear(max_age_days)
 
-    def _fetch_capital_com(self, years):
+    def _fetch_capital_com(self, years=None, start_date=None, end_date=None):
         """Fetch data from Capital.com API"""
         if CapitalComDataFetcher is None:
             raise ImportError("Capital.com fetcher not available")
@@ -210,7 +299,9 @@ class DataFetcher:
                     symbol=self.symbol,
                     asset_type=self.source,
                     timeframe=self.timeframe,
-                    years=years
+                    years=years,
+                    start_date=start_date,
+                    end_date=end_date
                 )
                 
                 if result is not None and not result.empty:
@@ -224,7 +315,7 @@ class DataFetcher:
             print(f"Capital.com API error: {e}")
             return None
 
-    def _fetch_fxcm_rest(self, years):
+    def _fetch_fxcm_rest(self, years=None, start_date=None, end_date=None):
         """Fetch forex data from FXCM REST API (free historical data)"""
         # FXCM provides free historical forex data but requires registration
         # This is a placeholder - in production you'd implement the actual API calls
@@ -248,31 +339,50 @@ class DataFetcher:
             print(f"FXCM REST API error: {e}")
             return None
 
-    def _fetch_ccxt(self, years):
+    def _fetch_ccxt(self, years=None, start_date=None, end_date=None):
         """Fetch crypto data from specified exchange via ccxt"""
         if ccxt is None:
             raise ImportError("ccxt not available")
             
         try:
             ex = getattr(ccxt, self.exchange)()
-            return self._fetch_ccxt_data(ex, self.symbol, years)
+            return self._fetch_ccxt_data(ex, self.symbol, years, start_date, end_date)
         except Exception as e:
             print(f"CCXT {self.exchange} error: {e}")
             return None
 
-    def _fetch_ccxt_data(self, exchange, symbol, years):
+    def _fetch_ccxt_data(self, exchange, symbol, years=None, start_date=None, end_date=None):
         """Common method to fetch data via ccxt"""
-        since = int((datetime.utcnow() - timedelta(days=365*years)).timestamp() * 1000)
+        # Calculate date range
+        if start_date is not None:
+            since = int(start_date.timestamp() * 1000)
+            end_timestamp = int(end_date.timestamp() * 1000) if end_date else None
+        else:
+            # Fallback to years-based calculation
+            since = int((datetime.utcnow() - timedelta(days=365*years)).timestamp() * 1000)
+            end_timestamp = None
         limit = 1000
         all_ohlcv = []
         
-        print(f"Fetching {symbol} data from {exchange.id}...")
+        if start_date:
+            date_info = f"from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d') if end_date else 'now'}"
+        else:
+            date_info = f"for {years} years"
+        print(f"Fetching {symbol} data {date_info} from {exchange.id}...")
         
         while True:
             try:
                 ohlcv = exchange.fetch_ohlcv(symbol, timeframe=self.timeframe, since=since, limit=limit)
                 if not ohlcv:
                     break
+                
+                # Check if we've reached the end date
+                if end_timestamp and ohlcv[-1][0] >= end_timestamp:
+                    # Filter out data beyond end_date
+                    ohlcv = [candle for candle in ohlcv if candle[0] < end_timestamp]
+                    all_ohlcv += ohlcv
+                    break
+                
                 all_ohlcv += ohlcv
                 since = ohlcv[-1][0] + 1
                 if len(ohlcv) < limit:

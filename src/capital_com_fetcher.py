@@ -4,7 +4,7 @@ import time
 import json
 from datetime import datetime, timedelta
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 from .helpers import (
     format_trading_session_info,
@@ -352,7 +352,9 @@ class CapitalComDataFetcher:
             return {}
     
     def fetch_historical_data(self, symbol: str, asset_type: str, 
-                            timeframe: str = '1h', years: int = 3) -> Optional[pd.DataFrame]:
+                            timeframe: str = '1h', years: Optional[Union[int, float]] = None,
+                            start_date: Optional[Union[str, datetime]] = None,
+                            end_date: Optional[Union[str, datetime]] = None) -> Optional[pd.DataFrame]:
         """
         Fetch historical price data from Capital.com
         
@@ -360,10 +362,19 @@ class CapitalComDataFetcher:
             symbol: Symbol to fetch (will be mapped to Capital.com epic)
             asset_type: 'forex', 'indices', 'crypto', 'cryptocurrency', 'cryptocurrencies', 'commodities', etc.
             timeframe: '5m', '15m', '1h', '4h', '1d'
-            years: Number of years of data to fetch
+            years: Number of years of data to fetch (backward compatibility)
+            start_date: Start date for data fetching (string or datetime)
+            end_date: End date for data fetching (string or datetime)
             
         Returns:
             DataFrame with OHLCV data or None if failed
+            
+        Note:
+            - If years is provided, start_date and end_date are ignored
+            - If start_date and end_date are provided, years is ignored
+            - If only start_date is provided, end_date defaults to current time
+            - If only end_date is provided, raises ValueError
+            - If none provided, defaults to years=3
         """
         try:
             # Auto-detect crypto symbols and override asset_type if needed
@@ -392,33 +403,85 @@ class CapitalComDataFetcher:
             # Show trading hours info
             print(self.get_trading_hours_info())
             
+            # Parse and validate date parameters
+            def parse_date_input(date_input: Union[str, datetime, None]) -> Optional[datetime]:
+                """Parse date input into datetime object"""
+                if date_input is None:
+                    return None
+                
+                if isinstance(date_input, datetime):
+                    return date_input
+                
+                if isinstance(date_input, str):
+                    try:
+                        # Try parsing ISO format dates
+                        if 'T' in date_input:
+                            return datetime.fromisoformat(date_input.replace('Z', '+00:00'))
+                        else:
+                            return datetime.fromisoformat(date_input)
+                    except ValueError:
+                        try:
+                            # Try parsing common formats
+                            return datetime.strptime(date_input, '%Y-%m-%d')
+                        except ValueError:
+                            raise ValueError(f"Unable to parse date: {date_input}. Use ISO format like '2023-01-01' or '2023-01-01T10:00:00'")
+                
+                raise ValueError(f"Invalid date type: {type(date_input)}. Use string or datetime object.")
+            
+            parsed_start_date = parse_date_input(start_date)
+            parsed_end_date = parse_date_input(end_date)
+            
+            # Parameter validation and resolution
+            if years is not None:
+                # Use years parameter (backward compatibility)
+                if start_date is not None or end_date is not None:
+                    print("⚠️  Both years and date range specified. Using years parameter for backward compatibility.")
+                actual_end_date = datetime.utcnow()
+                actual_start_date = actual_end_date - timedelta(days=365 * years)
+            elif start_date is not None or end_date is not None:
+                # Use date range mode
+                if start_date is not None and end_date is None:
+                    # Default end_date to current time
+                    parsed_end_date = datetime.utcnow()
+                    print(f"📅 End date not specified, using current time: {parsed_end_date.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                elif start_date is None and end_date is not None:
+                    raise ValueError("If end_date is specified, start_date must also be provided")
+                
+                # Validate date range
+                if parsed_start_date >= parsed_end_date:
+                    raise ValueError(f"Start date ({parsed_start_date}) must be before end date ({parsed_end_date})")
+                
+                actual_start_date = parsed_start_date
+                actual_end_date = parsed_end_date
+            else:
+                # Default to 3 years
+                actual_end_date = datetime.utcnow()
+                actual_start_date = actual_end_date - timedelta(days=365 * 3)
+                print("📅 No date parameters specified, defaulting to 3 years of data")
+            
             # Map timeframe
             resolution = self.timeframe_mapping.get(timeframe, 'HOUR')
             
-            # Calculate date range with trading hours adjustment
-            end_date = datetime.utcnow()
-            start_date = end_date - timedelta(days=365 * years)
-            
             # Adjust dates to valid trading times
-            original_start = start_date
-            original_end = end_date
+            original_start = actual_start_date
+            original_end = actual_end_date
             
-            start_date = get_next_valid_time(start_date)
+            actual_start_date = get_next_valid_time(actual_start_date)
             # Ensure end date is within trading hours
-            if not is_trading_hour(end_date):
+            if not is_trading_hour(actual_end_date):
                 # Get the most recent valid trading time
-                end_date = get_last_valid_time(end_date)
+                actual_end_date = get_last_valid_time(actual_end_date)
             
-            if original_start != start_date:
-                print(f"📅 Adjusted start time: {format_trading_session_info(original_start)} → {format_trading_session_info(start_date)}")
-            if original_end != end_date:
-                print(f"📅 Adjusted end time: {format_trading_session_info(original_end)} → {format_trading_session_info(end_date)}")
+            if original_start != actual_start_date:
+                print(f"📅 Adjusted start time: {format_trading_session_info(original_start)} → {format_trading_session_info(actual_start_date)}")
+            if original_end != actual_end_date:
+                print(f"📅 Adjusted end time: {format_trading_session_info(original_end)} → {format_trading_session_info(actual_end_date)}")
             
-            print(f"📅 Final date range: {start_date.strftime('%Y-%m-%d %H:%M')} to {end_date.strftime('%Y-%m-%d %H:%M')} UTC")
+            print(f"📅 Final date range: {actual_start_date.strftime('%Y-%m-%d %H:%M')} to {actual_end_date.strftime('%Y-%m-%d %H:%M')} UTC")
             
             # Format dates for API
-            from_date = start_date.strftime('%Y-%m-%dT%H:%M:%S')
-            to_date = end_date.strftime('%Y-%m-%dT%H:%M:%S')
+            from_date = actual_start_date.strftime('%Y-%m-%dT%H:%M:%S')
+            to_date = actual_end_date.strftime('%Y-%m-%dT%H:%M:%S')
             
             # Prepare request parameters
             headers = self._get_auth_headers()
@@ -430,16 +493,16 @@ class CapitalComDataFetcher:
             }
             
             all_data = []
-            current_from = start_date
+            current_from = actual_start_date
             
             # Fetch data in chunks if needed (API has 1000 record limit)
-            while current_from < end_date:
+            while current_from < actual_end_date:
                 # Skip non-trading periods
                 if is_weekend(current_from) or not is_trading_hour(current_from):
                     next_valid = get_next_valid_time(current_from)
                     print(f"  ⏭️  Skipping non-trading period: {format_trading_session_info(current_from)} → {format_trading_session_info(next_valid)}")
                     current_from = next_valid
-                    if current_from >= end_date:
+                    if current_from >= actual_end_date:
                         print(f"  🛑 Reached end date after skipping non-trading period, breaking loop")
                         break
                 
@@ -455,7 +518,7 @@ class CapitalComDataFetcher:
                 else:  # 1d
                     chunk_days = 1000  # No real limit for daily
                 
-                chunk_end = min(current_from + timedelta(days=chunk_days), end_date)
+                chunk_end = min(current_from + timedelta(days=chunk_days), actual_end_date)
                 
                 # Ensure chunk_end is not before current_from (safety check)
                 if chunk_end <= current_from:
@@ -557,7 +620,7 @@ class CapitalComDataFetcher:
                     current_from = next_time
                 
                 # Safety check to prevent infinite loop when approaching end_date
-                if current_from >= end_date:
+                if current_from >= actual_end_date:
                     print(f"  🛑 Reached end date while advancing to next chunk, breaking loop")
                     break
                 

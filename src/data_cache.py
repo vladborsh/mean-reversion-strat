@@ -10,6 +10,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
+from typing import Optional, Union
 
 from .transport_factory import create_cache_transport
 from .transport import TransportInterface
@@ -46,7 +47,7 @@ class DataCache:
         logger.info(f"DataCache initialized with {type(self.transport).__name__}")
     
     
-    def _generate_cache_key(self, source, symbol, timeframe, years, additional_params=None):
+    def _generate_cache_key(self, source, symbol, timeframe, years=None, start_date=None, end_date=None, additional_params=None):
         """
         Generate a unique cache key based on data request parameters.
         
@@ -54,14 +55,25 @@ class DataCache:
             source (str): Data source (forex, crypto, indices)
             symbol (str): Trading symbol (e.g., 'EURUSD')
             timeframe (str): Data timeframe (e.g., '15m', '1h', '4h', '1d')
-            years (int): Number of years of data requested
+            years (int, optional): Number of years of data requested
+            start_date (datetime, optional): Start date for data request
+            end_date (datetime, optional): End date for data request
             additional_params (dict, optional): Additional parameters that affect data
             
         Returns:
             str: Unique cache key for this data request
         """
         # Create a string representation of all parameters
-        key_data = f"{source}_{symbol}_{timeframe}_{years}"
+        if start_date is not None and end_date is not None:
+            # Use date range for cache key
+            date_str = f"{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+            key_data = f"{source}_{symbol}_{timeframe}_dates_{date_str}"
+        elif years is not None:
+            # Use years for cache key (backward compatibility)
+            key_data = f"{source}_{symbol}_{timeframe}_years_{years}"
+        else:
+            # Fallback
+            key_data = f"{source}_{symbol}_{timeframe}_default"
         
         if additional_params:
             # Sort additional params for consistent key generation
@@ -129,7 +141,7 @@ class DataCache:
         
         return expiry_map.get(timeframe, self.max_age_hours)
     
-    def get(self, source, symbol, timeframe, years, additional_params=None):
+    def get(self, source, symbol, timeframe, years=None, start_date=None, end_date=None, additional_params=None):
         """
         Retrieve cached data if available and valid.
         
@@ -137,13 +149,15 @@ class DataCache:
             source (str): Data source
             symbol (str): Trading symbol
             timeframe (str): Data timeframe
-            years (int): Number of years of data
+            years (int, optional): Number of years of data
+            start_date (datetime, optional): Start date for data request
+            end_date (datetime, optional): End date for data request
             additional_params (dict, optional): Additional parameters
             
         Returns:
             pandas.DataFrame or None: Cached data if available and valid, None otherwise
         """
-        cache_key = self._generate_cache_key(source, symbol, timeframe, years, additional_params)
+        cache_key = self._generate_cache_key(source, symbol, timeframe, years, start_date, end_date, additional_params)
         
         logger.info(f"Checking cache for key: {cache_key}")
         
@@ -193,7 +207,7 @@ class DataCache:
                 pass
             return None
     
-    def set(self, source, symbol, timeframe, years, data, additional_params=None, metadata=None):
+    def set(self, source, symbol, timeframe, years=None, start_date=None, end_date=None, data=None, additional_params=None, metadata=None):
         """
         Store data in cache.
         
@@ -201,7 +215,9 @@ class DataCache:
             source (str): Data source
             symbol (str): Trading symbol
             timeframe (str): Data timeframe
-            years (int): Number of years of data
+            years (int, optional): Number of years of data
+            start_date (datetime, optional): Start date for data request
+            end_date (datetime, optional): End date for data request
             data (pandas.DataFrame): Data to cache
             additional_params (dict, optional): Additional parameters
             metadata (dict, optional): Additional metadata to store with the data
@@ -210,22 +226,31 @@ class DataCache:
             logger.warning("Attempted to cache empty data - skipping")
             return
         
-        cache_key = self._generate_cache_key(source, symbol, timeframe, years, additional_params)
+        cache_key = self._generate_cache_key(source, symbol, timeframe, years, start_date, end_date, additional_params)
         
         # Prepare cache data with metadata
+        cache_metadata = {
+            'source': source,
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'cached_at': datetime.now().isoformat(),
+            'rows': len(data),
+            'data_start_date': data.index[0].isoformat() if not data.empty else None,
+            'data_end_date': data.index[-1].isoformat() if not data.empty else None,
+            **(metadata or {})
+        }
+        
+        # Add request parameters to metadata
+        if years is not None:
+            cache_metadata['request_years'] = years
+        if start_date is not None:
+            cache_metadata['request_start_date'] = start_date.isoformat()
+        if end_date is not None:
+            cache_metadata['request_end_date'] = end_date.isoformat()
+        
         cache_data = {
             'data': data,
-            'metadata': {
-                'source': source,
-                'symbol': symbol,
-                'timeframe': timeframe,
-                'years': years,
-                'cached_at': datetime.now().isoformat(),
-                'rows': len(data),
-                'start_date': data.index[0].isoformat() if not data.empty else None,
-                'end_date': data.index[-1].isoformat() if not data.empty else None,
-                **(metadata or {})
-            }
+            'metadata': cache_metadata
         }
         
         if self.transport.save_pickle(cache_key, cache_data):
