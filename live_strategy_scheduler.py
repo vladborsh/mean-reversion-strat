@@ -47,6 +47,7 @@ from src.bot.signal_chart_generator import SignalChartGenerator
 from src.bot.telegram_bot import create_telegram_bot_from_env, TelegramBotManager
 from src.bot.signal_cache import create_signal_cache
 from src.symbol_config_manager import SymbolConfigManager
+from src.news.news_scheduler import NewsScheduler
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ class LiveStrategyScheduler:
                 logger.error(f"❌ Failed to initialize Telegram bot: {e}")
                 self.enable_telegram = False
         
-        # Load symbol configurations
+        # Load symbol configurations first
         try:
             self.symbols_config = SymbolConfigManager.load_symbol_configs(self.config_file_path)
         except FileNotFoundError:
@@ -122,6 +123,25 @@ class LiveStrategyScheduler:
             logger.error(f"❌ Error loading configurations: {e}")
             sys.exit(1)
         
+        # Initialize news scheduler if enabled (pass symbols config for currency filtering)
+        self.enable_news = os.getenv('ENABLE_NEWS', 'true').lower() == 'true'
+        self.news_scheduler = None
+        if self.enable_news and self.enable_telegram and self.telegram_bot:
+            try:
+                self.news_scheduler = NewsScheduler(
+                    bot_manager=self.telegram_bot, 
+                    symbols_config=self.symbols_config
+                )
+                # Note: Actual async initialization happens in run_scheduler
+                logger.info("📰 News scheduler created - will initialize on startup")
+            except Exception as e:
+                logger.error(f"❌ Failed to create news scheduler: {e}")
+                self.enable_news = False
+        elif self.enable_news and not self.enable_telegram:
+            logger.warning("⚠️  News scheduler disabled - requires Telegram bot")
+            self.enable_news = False
+        
+        
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -130,6 +150,7 @@ class LiveStrategyScheduler:
         logger.info(f"📁 Config file: {self.config_file_path}")
         logger.info(f"📊 Loaded {len(self.symbols_config)} symbols")
         logger.info(f"📱 Telegram notifications: {'Enabled' if self.enable_telegram else 'Disabled'}")
+        logger.info(f"📰 News notifications: {'Enabled' if self.enable_news else 'Disabled'}")
         logger.info("⏰ Running every 5 minutes during trading hours (6:00-17:00 UTC)")
     
     def _signal_handler(self, signum, frame):
@@ -582,6 +603,18 @@ class LiveStrategyScheduler:
                 logger.error(f"❌ Error starting Telegram bot: {e}")
                 self.enable_telegram = False
         
+        # Initialize news scheduler if enabled
+        if self.enable_news and self.news_scheduler:
+            try:
+                if await self.news_scheduler.initialize():
+                    logger.info("📰 News scheduler initialized successfully")
+                else:
+                    logger.warning("⚠️  News scheduler initialization failed")
+                    self.enable_news = False
+            except Exception as e:
+                logger.error(f"❌ Error initializing news scheduler: {e}")
+                self.enable_news = False
+        
         self.running = True
         
         try:
@@ -610,7 +643,23 @@ class LiveStrategyScheduler:
                         
                         # Sleep for 1 second to avoid running multiple times in the same minute
                         await asyncio.sleep(1)
-                    else:
+                    
+                    # Check news tasks (every minute at 0 seconds)
+                    if self.enable_news and self.news_scheduler and current_second == 0:
+                        try:
+                            # Check for weekly news fetch
+                            if self.news_scheduler.should_fetch_now():
+                                logger.info("📰 Executing scheduled weekly news fetch")
+                                asyncio.create_task(self.news_scheduler.fetch_weekly_news())
+                            
+                            # Check for daily notifications
+                            if self.news_scheduler.should_notify_now():
+                                logger.info("📰 Executing scheduled daily news notifications")
+                                asyncio.create_task(self.news_scheduler.send_daily_notifications())
+                        except Exception as e:
+                            logger.error(f"❌ News scheduler error: {e}")
+                    
+                    if current_minute % 5 != 0 or current_second != 15:
                         # Calculate and show next run time every 30 seconds
                         if current_second == 0 or current_second == 30:
                             next_run_minute = ((current_minute // 5) + 1) * 5
