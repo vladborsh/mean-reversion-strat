@@ -24,6 +24,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
 - **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
+- **[Live Performance Verifier](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Historical performance analysis tool
 - **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
 - **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Strategy performance evolution and improvements
 - **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
@@ -45,6 +46,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **Risk Management**: Configurable stop loss, take profit, and position sizing
 - **Performance Tools**: Data caching, market hours validation, visualization
 - **Backtesting**: Complete backtest engine with comprehensive metrics
+- **📊 Live Performance Verification**: Historical analysis tool using real strategy execution
 - **Optimization**: Multiple hyperparameter tuning approaches with dedicated CLI
 - **🤖 Live Trading Bot**: Telegram bot integration for real-time signal notifications
 - **🐳 Container Support**: Full Docker/Podman support for deployment and scaling
@@ -277,6 +279,35 @@ python main.py --symbol BTCUSD --timeframe 15m --preference balanced
 - `--timeframe`: Data timeframe (`5m`, `15m`, `1h`)
 
 The script automatically loads optimized hyperparameters from the `results/` folder based on your symbol, timeframe, and preference. If no optimized configuration is found, it falls back to default settings.
+
+### Live Performance Verification
+
+Verify how the live trading strategy would have performed over historical periods using real backtesting:
+
+```bash
+# Analyze last 3 weeks (default)
+python live_performance_verifier.py
+
+# Analyze specific periods
+python live_performance_verifier.py --period 1w    # 1 week
+python live_performance_verifier.py --period 21d   # 21 days
+python live_performance_verifier.py --period 2m    # 2 months
+
+# Analyze specific symbols
+python live_performance_verifier.py --symbols EURUSD GBPUSD AUDUSD
+
+# Detailed analysis with trade breakdown
+python live_performance_verifier.py --detailed --export json
+```
+
+**Key Features:**
+- Uses the same `MeanReversionStrategy` as the live scheduler
+- Shows real trade outcomes (take profit, stop loss, timeout)
+- Calculates accurate P&L, win rate, and drawdown metrics
+- Displays chronological trade history across all symbols
+- Exports results to JSON/CSV for further analysis
+
+📖 **[Complete Documentation](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Detailed usage guide and result interpretation
 
 ### Strategy Optimization
 
