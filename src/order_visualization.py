@@ -35,48 +35,152 @@ def plot_order_levels_on_chart(ax, order):
 
 def get_order_window_data(df, order, window_size):
     """Get data window around an order."""
-    order_idx = df.index.get_loc(order['time'])
+    try:
+        # Try to find the closest timestamp in the dataframe
+        order_time = pd.to_datetime(order['time'])
+
+        # Make sure both timestamps have same timezone awareness
+        if df.index.tz is not None and order_time.tz is None:
+            # Make order_time timezone aware (assuming UTC)
+            order_time = order_time.tz_localize('UTC')
+        elif df.index.tz is None and order_time.tz is not None:
+            # Make order_time timezone naive
+            order_time = order_time.tz_localize(None)
+
+        # Find the nearest index if exact match not found
+        if order_time in df.index:
+            order_idx = df.index.get_loc(order_time)
+        else:
+            # Get the nearest timestamp
+            time_diff = abs(df.index - order_time)
+            order_idx = time_diff.argmin()
+    except Exception as e:
+        # Fallback to middle of data if we can't find the order
+        print(f"Warning: Could not locate order time {order['time']}: {e}")
+        order_idx = len(df) // 2
+
     start_idx = max(0, order_idx - window_size)
     end_idx = min(len(df), order_idx + window_size)
     return df.iloc[start_idx:end_idx]
 
 def plot_single_order_chart(ax, df, order, window_size=50):
-    """Plot a single order on the given axis."""
+    """Plot a single order on the given axis - clean version with only price and SL/TP levels."""
     # Get data window around the order
     window_data = get_order_window_data(df, order, window_size)
-    
-    # Plot price
-    ax.plot(window_data.index, window_data['close'], label='Price', 
-           color=COLORS['price'], linewidth=1.5)
-    
+
+    # Plot candlesticks
+    from matplotlib.patches import Rectangle
+
+    # Define candlestick colors
+    up_color = '#00ff88'    # Green for bullish candles
+    down_color = '#ff4444'  # Red for bearish candles
+    wick_color = '#333333'  # Dark gray for wicks
+
+    # Calculate candle width based on time interval
+    if len(window_data) > 1:
+        time_delta = window_data.index[1] - window_data.index[0]
+        candle_width = time_delta * 0.6  # 60% of time interval
+    else:
+        candle_width = pd.Timedelta(minutes=3)  # Default width
+
+    for i, (timestamp, row) in enumerate(window_data.iterrows()):
+        open_price = row['open']
+        high_price = row['high']
+        low_price = row['low']
+        close_price = row['close']
+
+        # Determine candle color
+        color = up_color if close_price >= open_price else down_color
+
+        # Draw the wick (high-low line)
+        ax.plot([timestamp, timestamp], [low_price, high_price],
+               color=wick_color, linewidth=1, alpha=0.8)
+
+        # Draw the body (open-close rectangle)
+        body_bottom = min(open_price, close_price)
+        body_height = abs(close_price - open_price)
+
+        # Create rectangle for candle body
+        rect = Rectangle((timestamp - candle_width/2, body_bottom),
+                        candle_width, body_height,
+                        facecolor=color, edgecolor=wick_color,
+                        linewidth=0.5, alpha=0.8)
+        ax.add_patch(rect)
+
     # Plot order levels
     entry_color = get_entry_color(order)
-    
+
     # Plot horizontal lines for levels
-    ax.axhline(y=order['entry'], color=entry_color, linestyle='-', 
-              label='Entry', linewidth=2)
-    ax.axhline(y=order['stop_loss'], color=COLORS['stop_loss'], 
-              linestyle=':', label='Stop Loss', linewidth=2)
-    ax.axhline(y=order['take_profit'], color=COLORS['take_profit'], 
-              linestyle=':', label='Take Profit', linewidth=2)
-    
-    # Add entry point marker
-    ax.scatter(order['time'], order['entry'], 
+    ax.axhline(y=order['entry'], color=entry_color, linestyle='-',
+              linewidth=2, alpha=0.8)
+    ax.axhline(y=order['stop_loss'], color=COLORS['stop_loss'],
+              linestyle='--', linewidth=1.5, alpha=0.7)
+    ax.axhline(y=order['take_profit'], color=COLORS['take_profit'],
+              linestyle='--', linewidth=1.5, alpha=0.7)
+
+    # Add entry point marker - use the closest available timestamp in the window
+    order_time = pd.to_datetime(order['time'])
+
+    # Make sure both timestamps have same timezone awareness
+    if window_data.index.tz is not None and order_time.tz is None:
+        order_time = order_time.tz_localize('UTC')
+    elif window_data.index.tz is None and order_time.tz is not None:
+        order_time = order_time.tz_localize(None)
+
+    if order_time in window_data.index:
+        marker_time = order_time
+    else:
+        # Find closest time in window data
+        time_diff = abs(window_data.index - order_time)
+        marker_time = window_data.index[time_diff.argmin()]
+
+    ax.scatter(marker_time, order['entry'],
               marker=get_entry_marker(order),
-              color=entry_color, s=200, zorder=5)
-    
-    # Add text box with order details
-    ax.text(0.02, 0.98, format_order_info(order), 
-            transform=ax.transAxes,
-            verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-    
+              color=entry_color, s=100, zorder=5)
+
+    # Add minimal text labels for levels
+    y_pos = ax.get_ylim()[1]
+    y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+
+    # Position labels at the right edge
+    x_pos = window_data.index[-1]
+
+    ax.text(x_pos, order['entry'], f' Entry: {order["entry"]:.5f}',
+            ha='left', va='center', fontsize=8, color=entry_color)
+    ax.text(x_pos, order['stop_loss'], f' SL: {order["stop_loss"]:.5f}',
+            ha='left', va='center', fontsize=8, color=COLORS['stop_loss'])
+    ax.text(x_pos, order['take_profit'], f' TP: {order["take_profit"]:.5f}',
+            ha='left', va='center', fontsize=8, color=COLORS['take_profit'])
+
+    # Add outcome if trade completed
+    if 'trade_outcome' in order:
+        outcome = order['trade_outcome']
+        outcome_type = outcome.get('type', 'unknown')
+        pnl = outcome.get('pnl', 0)
+
+        # Create simple outcome text
+        if outcome_type == 'take_profit':
+            outcome_text = f'✓ TP Hit (+${pnl:.2f})'
+            outcome_color = 'green'
+        elif outcome_type == 'stop_loss':
+            outcome_text = f'✗ SL Hit (${pnl:.2f})'
+            outcome_color = 'red'
+        else:
+            outcome_text = f'Closed (${pnl:.2f})'
+            outcome_color = 'gray'
+
+        ax.text(0.02, 0.98, outcome_text,
+                transform=ax.transAxes,
+                verticalalignment='top',
+                fontsize=9, color=outcome_color,
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
     # Set y-axis limits with some padding
-    price_range = max(abs(order['take_profit'] - order['entry']), 
+    price_range = max(abs(order['take_profit'] - order['entry']),
                      abs(order['stop_loss'] - order['entry']))
     ax.set_ylim(min(window_data['close'].min(), order['stop_loss']) - price_range * 0.2,
                max(window_data['close'].max(), order['take_profit']) + price_range * 0.2)
-    
+
     return window_data
 
 def plot_individual_orders(df, orders, window_size=50):

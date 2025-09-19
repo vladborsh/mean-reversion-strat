@@ -298,6 +298,9 @@ python live_performance_verifier.py --symbols EURUSD GBPUSD AUDUSD
 
 # Detailed analysis with trade breakdown
 python live_performance_verifier.py --detailed --export json
+
+# Generate visual charts
+python live_performance_verifier.py --chart --save-order-charts
 ```
 
 **Key Features:**
@@ -305,6 +308,8 @@ python live_performance_verifier.py --detailed --export json
 - Shows real trade outcomes (take profit, stop loss, timeout)
 - Calculates accurate P&L, win rate, and drawdown metrics
 - Displays chronological trade history across all symbols
+- **Visual analysis** with P&L curve and order tracking charts
+- **Order charts** show all trades with entry, SL/TP levels and outcomes
 - Exports results to JSON/CSV for further analysis
 
 📖 **[Complete Documentation](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Detailed usage guide and result interpretation

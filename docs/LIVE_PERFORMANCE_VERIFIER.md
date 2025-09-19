@@ -12,6 +12,8 @@ The Live Performance Verifier (`live_performance_verifier.py`) is a CLI tool tha
 - **Comprehensive Metrics**: Win rate, P&L, drawdown, trade outcomes
 - **Symbol Filtering**: Analyze specific symbols or all configured assets
 - **Trade Details**: View complete trade history with entry/exit prices and outcomes
+- **Order Tracking Charts**: Generate visual charts showing all orders with SL/TP levels
+- **P&L Curve Visualization**: Generate cumulative P&L progression charts
 - **Export Options**: Save results to JSON or CSV for further analysis
 - **Error Handling**: Graceful handling of unavailable symbols or data issues
 
@@ -34,6 +36,15 @@ python live_performance_verifier.py --symbols EURUSD GBPUSD
 # Show detailed trade information
 python live_performance_verifier.py --detailed
 
+# Generate P&L curve chart
+python live_performance_verifier.py --chart
+
+# Generate order tracking charts with SL/TP levels
+python live_performance_verifier.py --save-order-charts
+
+# Generate both P&L curve and order charts
+python live_performance_verifier.py --chart --save-order-charts
+
 # Export results
 python live_performance_verifier.py --export json --output results.json
 python live_performance_verifier.py --export csv
@@ -50,6 +61,8 @@ python live_performance_verifier.py --verbose
 | `--symbols`, `-s` | Specific symbols to analyze | `EURUSD GBPUSD` |
 | `--config` | Configuration file path | `assets_config_wr45.json` |
 | `--detailed`, `-d` | Show detailed trade analysis | |
+| `--chart`, `-c` | Generate P&L curve chart | |
+| `--save-order-charts` | Generate order tracking charts with SL/TP levels | |
 | `--export` | Export format | `json`, `csv` |
 | `--output`, `-o` | Output filename | `results.json` |
 | `--verbose`, `-v` | Enable verbose logging | |
@@ -139,6 +152,47 @@ Trade Statistics:
 - **P&L**: Profit/Loss in USD (green = profit, red = loss)
 - **Outcome**: How the trade ended
 
+## Visualization Outputs
+
+The tool can generate two types of visual outputs to help analyze strategy performance:
+
+### 1. P&L Curve Chart (`--chart`)
+
+Generated with the `--chart` flag, this shows:
+- **Cumulative P&L progression** over all trades
+- **Peak and trough markers** highlighting best and worst performance points
+- **Final P&L and total trade count** in the title
+- **Professional styling** with clear axis labels and gridlines
+
+Saved to: `plots/pnl_curve_[period]_[timestamp].png`
+
+### 2. Order Tracking Charts (`--save-order-charts`)
+
+Generated with the `--save-order-charts` flag, this creates visual charts for each symbol showing:
+- **Clean price lines** (black) showing market movement around each order
+- **Entry level** (solid line) marking exact entry price
+- **Stop Loss level** (dashed red line) showing SL price
+- **Take Profit level** (dashed blue line) showing TP price
+- **Entry point marker** (colored dot) at the exact entry time
+- **Trade outcome indicator** (top-left corner) showing if SL/TP was hit with P&L
+
+**Chart Features:**
+- All orders for each symbol combined in a single grid image
+- 50 candles of price data around each entry point for context
+- Clean visualization without technical indicators
+- Timezone-aware plotting ensuring accurate entry point placement
+
+Saved to: `plots/orders_[period]_[timestamp]/[timestamp]/all_orders.png`
+
+**Example Usage:**
+```bash
+# Generate both chart types
+python live_performance_verifier.py --period 1w --chart --save-order-charts
+
+# Generate only order tracking charts
+python live_performance_verifier.py --period 3d --symbols EURUSD --save-order-charts
+```
+
 ## How It Works
 
 ### Technical Implementation
@@ -199,6 +253,22 @@ python live_performance_verifier.py --period 2w --symbols EURUSD GBPUSD AUDUSD -
 ```
 
 Compares performance across major currency pairs over 2 weeks.
+
+### Example 4: Visual Analysis with Charts
+
+```bash
+python live_performance_verifier.py --period 1w --chart --save-order-charts
+```
+
+Generates both P&L curve and order tracking charts for complete visual analysis.
+
+### Example 5: Order-Only Visualization
+
+```bash
+python live_performance_verifier.py --period 3d --symbols NZDUSD --save-order-charts --detailed
+```
+
+Focuses on order visualization with detailed trade analysis for a specific symbol over 3 days.
 
 ## Interpreting Results
 

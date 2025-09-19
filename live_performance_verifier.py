@@ -24,6 +24,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
 import pandas as pd
 from dotenv import load_dotenv
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -36,6 +38,7 @@ from src.data_fetcher import DataFetcher
 from src.symbol_config_manager import SymbolConfigManager
 from src.strategy import MeanReversionStrategy
 from src.backtest import run_backtest
+from src.order_visualization import save_order_plots
 
 # CLI formatting imports
 try:
@@ -289,7 +292,8 @@ class PerformanceAnalyzer:
                 'final_balance': final_balance,
                 'total_trades': len(completed_trades),
                 'equity_curve': equity_curve,
-                'equity_dates': equity_dates
+                'equity_dates': equity_dates,
+                'data': data  # Store data for visualization
             }
 
         except Exception as e:
@@ -430,6 +434,42 @@ class PerformanceAnalyzer:
         winning_trades = [t for t in all_trades if t['pnl'] > 0]
         overall_win_rate = len(winning_trades) / len(all_trades) * 100 if all_trades else 0.0
 
+        # Calculate average risk/reward ratio for winning trades
+        avg_winning_rr_ratio = 0.0
+        if winning_trades:
+            winning_rr_ratios = []
+            for trade in winning_trades:
+                # Find the corresponding order with risk/reward info
+                for result in successful_analyses:
+                    for order in result.get('signals', []):
+                        if 'trade_outcome' in order:
+                            outcome = order['trade_outcome']
+                            # Match trade by comparing PNL and entry details
+                            if (abs(outcome.get('pnl', 0) - trade['pnl']) < 0.01 and
+                                abs(order['entry_price'] - trade['entry_price']) < 0.00001):
+                                # Calculate actual risk/reward achieved
+                                entry = order['entry_price']
+                                stop_loss = order['stop_loss']
+                                exit_price = outcome.get('exit_price', entry)
+
+                                # Determine if long or short trade
+                                is_long = order['type'].upper() == 'BUY'
+
+                                if is_long:
+                                    risk = abs(entry - stop_loss)
+                                    reward = abs(exit_price - entry)
+                                else:  # Short trade
+                                    risk = abs(stop_loss - entry)
+                                    reward = abs(entry - exit_price)
+
+                                if risk > 0:
+                                    actual_rr = reward / risk
+                                    winning_rr_ratios.append(actual_rr)
+                                break
+
+            if winning_rr_ratios:
+                avg_winning_rr_ratio = sum(winning_rr_ratios) / len(winning_rr_ratios)
+
         # Calculate maximum drawdown across all symbols
         max_drawdown = max([r.get('max_drawdown', 0) for r in successful_analyses]) if successful_analyses else 0.0
 
@@ -448,6 +488,7 @@ class PerformanceAnalyzer:
             'losing_trades': len(all_trades) - len(winning_trades),
             'total_pnl': total_pnl,
             'overall_win_rate': overall_win_rate,
+            'avg_winning_rr_ratio': avg_winning_rr_ratio,
             'max_drawdown': max_drawdown,
             'success_rate': (total_successful_orders / (total_successful_orders + total_failed_orders) * 100)
                            if (total_successful_orders + total_failed_orders) > 0 else 0.0
@@ -501,13 +542,137 @@ def format_status_indicator(status: str) -> str:
     return indicators.get(status, status)
 
 
-def display_results(analysis_results: Dict[str, Any], detailed: bool = False):
+def generate_pnl_curve_chart(analysis_results: Dict[str, Any], period: str) -> Optional[str]:
+    """
+    Generate PnL curve chart from trade data
+
+    Args:
+        analysis_results: Complete analysis results dictionary
+        period: Analysis period string for filename
+
+    Returns:
+        Path to generated chart file or None if failed
+    """
+    try:
+        # Collect all trades from all symbols and sort chronologically
+        all_trades = []
+        symbol_results = analysis_results['symbol_results']
+
+        for symbol_key, result in symbol_results.items():
+            if result['status'] == 'analyzed' and result.get('trades'):
+                symbol = result['symbol']
+                for trade in result['trades']:
+                    try:
+                        entry_datetime = pd.to_datetime(trade['entry_time'])
+                    except:
+                        entry_datetime = pd.to_datetime('2025-01-01')
+
+                    all_trades.append({
+                        'symbol': symbol,
+                        'entry_time': entry_datetime,
+                        'pnl': trade.get('pnl', 0),
+                        'entry_price': trade.get('entry_price', 0),
+                        'signal_type': trade.get('signal_type', 'unknown')
+                    })
+
+        if not all_trades:
+            logger.debug("No trades found for PnL curve chart")
+            return None
+
+        # Sort trades by entry time
+        all_trades.sort(key=lambda x: x['entry_time'])
+
+        # Calculate cumulative P&L
+        cumulative_pnl = [0]  # Start at zero
+        trade_numbers = [0]
+        trade_dates = [all_trades[0]['entry_time']]
+
+        running_pnl = 0
+        for i, trade in enumerate(all_trades, 1):
+            running_pnl += trade['pnl']
+            cumulative_pnl.append(running_pnl)
+            trade_numbers.append(i)
+            trade_dates.append(trade['entry_time'])
+
+        # Create the chart
+        plt.style.use('default')  # Clean style
+        fig, ax = plt.subplots(figsize=(14, 8))
+
+        # Plot the cumulative P&L curve
+        line_color = '#2E8B57' if cumulative_pnl[-1] >= 0 else '#DC143C'  # Green if profitable, red if loss
+        ax.plot(trade_numbers, cumulative_pnl, linewidth=2.5, color=line_color, label='Cumulative P&L')
+
+        # Fill areas above/below zero
+        ax.fill_between(trade_numbers, cumulative_pnl, 0, alpha=0.3,
+                       color='green' if cumulative_pnl[-1] >= 0 else 'red')
+
+        # Add zero line
+        ax.axhline(y=0, color='black', linestyle='-', alpha=0.3, linewidth=1)
+
+        # Mark significant points
+        max_pnl = max(cumulative_pnl)
+        min_pnl = min(cumulative_pnl)
+
+        if max_pnl > 0:
+            max_idx = cumulative_pnl.index(max_pnl)
+            ax.plot(trade_numbers[max_idx], max_pnl, marker='o', markersize=8,
+                   color='green', markerfacecolor='lightgreen', markeredgewidth=2,
+                   label=f'Peak: ${max_pnl:,.0f}')
+
+        if min_pnl < 0:
+            min_idx = cumulative_pnl.index(min_pnl)
+            ax.plot(trade_numbers[min_idx], min_pnl, marker='v', markersize=8,
+                   color='red', markerfacecolor='lightcoral', markeredgewidth=2,
+                   label=f'Trough: ${min_pnl:,.0f}')
+
+        # Formatting
+        ax.set_xlabel('Trade Number', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Cumulative P&L ($)', fontsize=12, fontweight='bold')
+        ax.set_title(f'Portfolio P&L Curve - {period.upper()} Period\n'
+                    f'Final P&L: ${cumulative_pnl[-1]:,.2f} | Total Trades: {len(all_trades)}',
+                    fontsize=14, fontweight='bold', pad=20)
+
+        # Grid and styling
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.legend(loc='upper left', frameon=True, fancybox=True, shadow=True)
+
+        # Format y-axis to show currency
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+
+        # Set background color
+        fig.patch.set_facecolor('white')
+        ax.set_facecolor('#FAFAFA')
+
+        # Tight layout
+        plt.tight_layout()
+
+        # Save the chart
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"pnl_curve_{period}_{timestamp}.png"
+        chart_path = os.path.join('plots', filename)
+
+        # Ensure plots directory exists
+        os.makedirs('plots', exist_ok=True)
+
+        plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()  # Close to free memory
+
+        logger.info(f"PnL curve chart saved to: {chart_path}")
+        return chart_path
+
+    except Exception as e:
+        logger.error(f"Error generating PnL curve chart: {e}")
+        return None
+
+
+def display_results(analysis_results: Dict[str, Any], detailed: bool = False, generate_chart: bool = False, save_order_charts: bool = False):
     """
     Display analysis results in formatted console tables
 
     Args:
         analysis_results: Complete analysis results dictionary
         detailed: Whether to show detailed per-trade information
+        generate_chart: Whether to generate PnL curve chart
     """
     summary = analysis_results['summary']
     symbol_results = analysis_results['symbol_results']
@@ -541,6 +706,7 @@ def display_results(analysis_results: Dict[str, Any], detailed: bool = False):
         ["Failed Orders", summary['total_failed_orders']],
         ["Winning Trades", f"{summary['winning_trades']}/{summary['total_trades']}"],
         ["Overall Win Rate", format_percentage(summary['overall_win_rate'])],
+        ["Avg Winning R/R Ratio", f"{summary.get('avg_winning_rr_ratio', 0):.2f}:1" if summary.get('avg_winning_rr_ratio', 0) > 0 else "N/A"],
         ["Total P&L", format_currency(summary['total_pnl'])],
         ["Max Drawdown", format_percentage(summary['max_drawdown'], reverse_colors=True)]
     ]
@@ -763,6 +929,108 @@ def display_results(analysis_results: Dict[str, Any], detailed: bool = False):
                 if len(result['trades']) > 10:
                     print(f"... and {len(result['trades']) - 10} more trades")
 
+    # Generate PnL curve chart if requested
+    if generate_chart:
+        print()
+        if FORMATTING_AVAILABLE:
+            print(f"{Fore.YELLOW}{Style.BRIGHT}GENERATING P&L CURVE CHART:{Style.RESET_ALL}")
+        else:
+            print("GENERATING P&L CURVE CHART:")
+
+        chart_path = generate_pnl_curve_chart(analysis_results, summary['period'])
+        if chart_path:
+            print(f"📈 Chart saved: {chart_path}")
+            if FORMATTING_AVAILABLE:
+                print(f"{Fore.GREEN}✅ P&L curve chart generated successfully!{Style.RESET_ALL}")
+            else:
+                print("✅ P&L curve chart generated successfully!")
+        else:
+            if FORMATTING_AVAILABLE:
+                print(f"{Fore.YELLOW}⚠️  No trades found - chart not generated{Style.RESET_ALL}")
+            else:
+                print("⚠️  No trades found - chart not generated")
+
+    # Generate order tracking charts if requested
+    if save_order_charts:
+        print()
+        if FORMATTING_AVAILABLE:
+            print(f"{Fore.YELLOW}{Style.BRIGHT}GENERATING ORDER TRACKING CHARTS:{Style.RESET_ALL}")
+        else:
+            print("GENERATING ORDER TRACKING CHARTS:")
+
+        # Process each symbol that has data and orders
+        symbol_results = analysis_results['symbol_results']
+        all_chart_paths = []
+
+        for symbol_key, result in symbol_results.items():
+            if result['status'] == 'analyzed' and result.get('signals') and result.get('data') is not None:
+                symbol = result['symbol']
+                data = result['data']
+                orders = result.get('signals', [])
+
+                # Format orders for save_order_plots
+                formatted_orders = []
+                for order in orders:
+                    try:
+                        formatted_order = {
+                            'time': pd.to_datetime(f"{order['date']} {order['time']}"),
+                            'entry': float(order['entry_price']),
+                            'stop_loss': float(order['stop_loss']),
+                            'take_profit': float(order['take_profit']),
+                            'is_long': order['type'].lower() == 'buy'
+                        }
+
+                        # Add trade outcome if available
+                        if 'trade_outcome' in order:
+                            formatted_order['trade_outcome'] = order['trade_outcome']
+
+                        formatted_orders.append(formatted_order)
+                    except Exception as e:
+                        logger.debug(f"Could not format order for {symbol}: {e}")
+
+                if formatted_orders:
+                    try:
+                        # Generate charts for this symbol
+                        print(f"  📊 Generating charts for {symbol}: {len(formatted_orders)} orders")
+
+                        # Create timestamp-based directory for this analysis
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        output_dir = f"plots/orders_{summary['period']}_{timestamp}"
+                        os.makedirs(output_dir, exist_ok=True)
+
+                        # Save order plots for this symbol
+                        chart_path = save_order_plots(
+                            df=data,
+                            orders=formatted_orders,
+                            output_dir=output_dir,
+                            window_size=50  # Show 50 candles around each order
+                        )
+
+                        if chart_path:
+                            all_chart_paths.append(chart_path)
+                            print(f"    ✅ Chart saved: {chart_path}")
+
+                    except Exception as e:
+                        logger.error(f"Error generating charts for {symbol}: {e}")
+                        if FORMATTING_AVAILABLE:
+                            print(f"    {Fore.RED}❌ Error: {e}{Style.RESET_ALL}")
+                        else:
+                            print(f"    ❌ Error: {e}")
+
+        if all_chart_paths:
+            print()
+            print(f"📈 Order tracking charts generated successfully!")
+            print(f"   Total symbols processed: {len(all_chart_paths)}")
+            if FORMATTING_AVAILABLE:
+                print(f"{Fore.GREEN}✅ All order charts saved to plots/ directory{Style.RESET_ALL}")
+            else:
+                print("✅ All order charts saved to plots/ directory")
+        else:
+            if FORMATTING_AVAILABLE:
+                print(f"{Fore.YELLOW}⚠️  No orders with data found - charts not generated{Style.RESET_ALL}")
+            else:
+                print("⚠️  No orders with data found - charts not generated")
+
 
 def export_results(analysis_results: Dict[str, Any], export_format: str, filename: str):
     """
@@ -845,6 +1113,8 @@ Examples:
   %(prog)s --period 14d              # Analyze last 14 days
   %(prog)s --symbols EURUSD GBPUSD   # Analyze specific symbols only
   %(prog)s --detailed                # Show detailed trade information
+  %(prog)s --chart                   # Generate P&L curve chart
+  %(prog)s --detailed --chart        # Detailed analysis with chart
   %(prog)s --export json results.json # Export results to JSON
         """
     )
@@ -871,6 +1141,18 @@ Examples:
         '--detailed', '-d',
         action='store_true',
         help='Show detailed per-trade analysis'
+    )
+
+    parser.add_argument(
+        '--chart', '-c',
+        action='store_true',
+        help='Generate P&L curve chart'
+    )
+
+    parser.add_argument(
+        '--save-order-charts',
+        action='store_true',
+        help='Generate combined chart showing all orders with SL/TP levels'
     )
 
     parser.add_argument(
@@ -911,7 +1193,8 @@ Examples:
         results = analyzer.analyze_all_symbols(args.period, args.symbols)
 
         # Display results
-        display_results(results, detailed=args.detailed)
+        display_results(results, detailed=args.detailed, generate_chart=args.chart,
+                       save_order_charts=args.save_order_charts)
 
         # Export if requested
         if args.export:
