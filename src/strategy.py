@@ -140,9 +140,8 @@ class MeanReversionStrategy(bt.Strategy):
                 return  # Skip trading outside of allowed hours
             
             # Long signal - Buy when price breaks below both bands with green candle
-            if (self.datas[0].open[0] < self.bb_lower[0] and
-                self.datas[0].open[0] < self.vwap_lower[0] and
-                self.datas[0].close[0] > self.datas[0].open[0]):  # Green candle confirmation
+            if (self.datas[0].close[0] < self.bb_lower[0] and
+                self.datas[0].close[0] < self.vwap_lower[0]):  # Green candle confirmation
                 # Check market regime conditions if filter is enabled
                 regime_suitable = True
                 regime_reason = "No regime filter"
@@ -245,9 +244,8 @@ class MeanReversionStrategy(bt.Strategy):
                             })
             
             # Short signal - Sell when price breaks above both bands with red candle
-            elif (self.datas[0].open[0] > self.bb_upper[0] and
-                  self.datas[0].open[0] > self.vwap_upper[0] and
-                  self.datas[0].close[0] < self.datas[0].open[0]):  # Red candle confirmation
+            elif (self.datas[0].close[0] > self.bb_upper[0] and
+                  self.datas[0].close[0] > self.vwap_upper[0]):  # Red candle confirmation
                 # Check market regime conditions if filter is enabled
                 regime_suitable = True
                 regime_reason = "No regime filter"
