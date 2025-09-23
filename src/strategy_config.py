@@ -36,7 +36,6 @@ class StrategyConfig:
     
     # Strategy Logic Parameters
     ENTRY_CONDITIONS = {
-        'require_reversal_confirmation': True,  # Require price reversal for entry
         'min_volume_threshold': 0,              # Minimum volume for entry (0 = no filter)
         'max_positions': 1                      # Maximum concurrent positions
     }
@@ -91,7 +90,6 @@ class StrategyConfig:
             'atr_period': cls.RISK_MANAGEMENT['atr_period'],
             
             # Entry conditions
-            'require_reversal': cls.ENTRY_CONDITIONS['require_reversal_confirmation'],
             'min_volume': cls.ENTRY_CONDITIONS['min_volume_threshold'],
             'max_positions': cls.ENTRY_CONDITIONS['max_positions'],
             

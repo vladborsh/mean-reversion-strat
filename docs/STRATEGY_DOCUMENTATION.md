@@ -88,7 +88,6 @@ risk_reward_ratio         # Risk to reward ratio (default: 2.5)
 leverage                  # Available leverage (default: 100.0)
 
 # Strategy Behavior
-require_reversal          # Require reversal confirmation (default: True)
 min_volume               # Minimum volume threshold (default: 0)
 max_positions            # Maximum concurrent positions (default: 1)
 timeframe                # Trading timeframe - affects order lifetime (default: '15m')
@@ -181,7 +180,6 @@ cerebro.addstrategy(MeanReversionStrategy,
                    bb_window=25,
                    bb_std=2.5,
                    vwap_window=25,
-                   require_reversal=False,
                    timeframe='1h')
 
 # Option 3: Use alternative configuration

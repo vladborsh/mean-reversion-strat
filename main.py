@@ -112,7 +112,6 @@ def create_custom_config_class(config_dict: Dict[str, Any]):
                 'vwap_std': vwap_config['std_dev'],
                 'vwap_anchor': 'day',  # Default anchor
                 'atr_period': atr_config['period'],
-                'require_reversal': strategy_config['require_reversal'],
                 'regime_min_score': strategy_config['regime_min_score'],
                 'regime_enabled': True
             }
@@ -215,7 +214,7 @@ def run_strategy(df, config_class=None, timeframe='15m'):
     print(f"📊 Bollinger Bands: {params['bb_window']} period, {params['bb_std']} std dev")
     print(f"📈 VWAP Bands: {params['vwap_window']} period, {params['vwap_std']} std dev")
     print(f"🎯 Risk Management: {risk_config['stop_loss_atr_multiplier']}x ATR stop, 1:{risk_config['risk_reward_ratio']} R:R")
-    print(f"🔄 Strategy: Reversal required: {params.get('require_reversal', False)}, Regime score: {params.get('regime_min_score', 60)}")
+    print(f"🔄 Strategy: Regime score: {params.get('regime_min_score', 60)}")
     
     # Calculate indicators
     bb_window = params['bb_window']

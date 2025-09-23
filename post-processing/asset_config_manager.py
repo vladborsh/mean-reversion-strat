@@ -49,7 +49,6 @@ class AssetConfig:
     risk_reward_ratio: float
     
     # Strategy Behavior
-    require_reversal: bool
     regime_min_score: int
     
     # Performance Metrics
@@ -92,8 +91,6 @@ class AssetConfig:
             risk_per_position_pct=risk_params['risk_per_position_pct'],
             stop_loss_atr_multiplier=risk_params['stop_loss_atr_multiplier'],
             risk_reward_ratio=risk_params['risk_reward_ratio'],
-            
-            require_reversal=behavior_params['require_reversal'],
             regime_min_score=behavior_params['regime_min_score'],
             
             final_pnl=performance['final_pnl'],
@@ -123,7 +120,6 @@ class AssetConfig:
                 'atr_period': self.atr_period
             },
             'ENTRY_CONDITIONS': {
-                'require_reversal_confirmation': self.require_reversal
             },
             'MARKET_REGIME': {
                 'min_regime_score': self.regime_min_score
@@ -281,7 +277,6 @@ class AssetConfigManager:
             strategy_config_module.RISK_MANAGEMENT['atr_period'] = config.atr_period
             
             # Update Entry Conditions (note: attribute name mapping)
-            strategy_config_module.ENTRY_CONDITIONS['require_reversal_confirmation'] = config.require_reversal
             
             # Update Market Regime
             strategy_config_module.MARKET_REGIME['min_regime_score'] = config.regime_min_score
@@ -379,7 +374,6 @@ class AssetConfigManager:
                 'risk_per_position_pct': config.risk_per_position_pct,
                 'stop_loss_atr_multiplier': config.stop_loss_atr_multiplier,
                 'risk_reward_ratio': config.risk_reward_ratio,
-                'require_reversal': config.require_reversal,
                 'regime_min_score': config.regime_min_score,
                 'source_file': config.source_file
             }

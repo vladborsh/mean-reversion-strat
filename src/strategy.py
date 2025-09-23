@@ -139,36 +139,29 @@ class MeanReversionStrategy(bt.Strategy):
                 # logger.debug(f"TRADING BLOCKED - Outside hours (6-17 UTC). Current: {current_time.hour:02d}:{current_time.minute:02d}")
                 return  # Skip trading outside of allowed hours
             
-            # Long signal - Buy when price breaks below both bands and shows reversal
-            if (self.dataclose[0] < self.bb_lower[0] and 
-                self.dataclose[0] < self.vwap_lower[0]):
-                
-                # Check for reversal confirmation if required
-                reversal_confirmed = True
-                if self.p.require_reversal:
-                    reversal_confirmed = (self.dataclose[-1] < self.bb_lower[-1] and 
-                                        self.dataclose[0] > self.dataclose[-1])
-                
-                if reversal_confirmed:
-                    # Check market regime conditions if filter is enabled
-                    regime_suitable = True
-                    regime_reason = "No regime filter"
-                    
-                    if self.regime_filter is not None:
-                        # Check if we have enough data for regime analysis
-                        if (len(self.regime_filter.is_suitable) > 0 and
-                            len(self.regime_filter.regime_score) > 0):
-                            
-                            regime_suitable = bool(self.regime_filter.is_suitable[0])
-                            regime_info = self.regime_filter.get_regime_info()
-                            regime_reason = regime_info.get('reason', 'Unknown regime')
+            # Long signal - Buy when price breaks below both bands with green candle
+            if (self.datas[0].open[0] < self.bb_lower[0] and
+                self.datas[0].open[0] < self.vwap_lower[0] and
+                self.datas[0].close[0] > self.datas[0].open[0]):  # Green candle confirmation
+                # Check market regime conditions if filter is enabled
+                regime_suitable = True
+                regime_reason = "No regime filter"
 
-                        else:
-                            # Not enough data for regime analysis, be conservative
-                            regime_suitable = False
-                            regime_reason = "Insufficient data for regime analysis"
-                    
-                    if regime_suitable:
+                if self.regime_filter is not None:
+                    # Check if we have enough data for regime analysis
+                    if (len(self.regime_filter.is_suitable) > 0 and
+                        len(self.regime_filter.regime_score) > 0):
+
+                        regime_suitable = bool(self.regime_filter.is_suitable[0])
+                        regime_info = self.regime_filter.get_regime_info()
+                        regime_reason = regime_info.get('reason', 'Unknown regime')
+
+                    else:
+                        # Not enough data for regime analysis, be conservative
+                        regime_suitable = False
+                        regime_reason = "Insufficient data for regime analysis"
+
+                if regime_suitable:
                         # Calculate risk management levels
                         entry_price = self.dataclose[0]
                         stop_loss = self.risk_manager.calculate_atr_stop_loss(
@@ -229,7 +222,7 @@ class MeanReversionStrategy(bt.Strategy):
                                 'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
                                 'account_risk_pct': risk_metrics['risk_percentage'],
                                 'deposit_before_trade': account_value,
-                                'reason': f'Break below BB/VWAP lower bands with reversal - {regime_reason}',
+                                'reason': f'Break below BB/VWAP lower bands with green candle - {regime_reason}',
                                 # Market regime information
                                 'regime_score': regime_info.get('score', 0),
                                 'regime_adx': regime_info.get('adx', 0),
@@ -248,39 +241,32 @@ class MeanReversionStrategy(bt.Strategy):
                             self.trade_log.append({
                                 'type': 'buy', 
                                 'price': entry_price, 
-                                'reason': 'Break below BB/VWAP lower'
+                                'reason': 'Break below BB/VWAP lower with green candle'
                             })
             
-            # Short signal - Sell when price breaks above both bands and shows reversal
-            elif (self.dataclose[0] > self.bb_upper[0] and 
-                  self.dataclose[0] > self.vwap_upper[0]):
-                
-                # Check for reversal confirmation if required
-                reversal_confirmed = True
-                if self.p.require_reversal:
-                    reversal_confirmed = (self.dataclose[-1] > self.bb_upper[-1] and 
-                                        self.dataclose[0] < self.dataclose[-1])
-                
-                if reversal_confirmed:
-                    # Check market regime conditions if filter is enabled
-                    regime_suitable = True
-                    regime_reason = "No regime filter"
-                    
-                    if self.regime_filter is not None:
-                        # Check if we have enough data for regime analysis
-                        if (len(self.regime_filter.is_suitable) > 0 and
-                            len(self.regime_filter.regime_score) > 0):
-                            
-                            regime_suitable = bool(self.regime_filter.is_suitable[0])
-                            regime_info = self.regime_filter.get_regime_info()
-                            regime_reason = regime_info.get('reason', 'Unknown regime')
+            # Short signal - Sell when price breaks above both bands with red candle
+            elif (self.datas[0].open[0] > self.bb_upper[0] and
+                  self.datas[0].open[0] > self.vwap_upper[0] and
+                  self.datas[0].close[0] < self.datas[0].open[0]):  # Red candle confirmation
+                # Check market regime conditions if filter is enabled
+                regime_suitable = True
+                regime_reason = "No regime filter"
 
-                        else:
-                            # Not enough data for regime analysis, be conservative
-                            regime_suitable = False
-                            regime_reason = "Insufficient data for regime analysis"
+                if self.regime_filter is not None:
+                    # Check if we have enough data for regime analysis
+                    if (len(self.regime_filter.is_suitable) > 0 and
+                        len(self.regime_filter.regime_score) > 0):
 
-                    if regime_suitable:
+                        regime_suitable = bool(self.regime_filter.is_suitable[0])
+                        regime_info = self.regime_filter.get_regime_info()
+                        regime_reason = regime_info.get('reason', 'Unknown regime')
+
+                    else:
+                        # Not enough data for regime analysis, be conservative
+                        regime_suitable = False
+                        regime_reason = "Insufficient data for regime analysis"
+
+                if regime_suitable:
                         # Calculate risk management levels
                         entry_price = self.dataclose[0]
                         stop_loss = self.risk_manager.calculate_atr_stop_loss(
@@ -341,7 +327,7 @@ class MeanReversionStrategy(bt.Strategy):
                                 'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
                                 'account_risk_pct': risk_metrics['risk_percentage'],
                                 'deposit_before_trade': account_value,
-                                'reason': f'Break above BB/VWAP upper bands with reversal - {regime_reason}',
+                                'reason': f'Break above BB/VWAP upper bands with red candle - {regime_reason}',
                                 # Market regime information
                                 'regime_score': regime_info.get('score', 0),
                                 'regime_adx': regime_info.get('adx', 0),
@@ -360,22 +346,26 @@ class MeanReversionStrategy(bt.Strategy):
                             self.trade_log.append({
                                 'type': 'sell', 
                                 'price': entry_price, 
-                                'reason': 'Break above BB/VWAP upper'
+                                'reason': 'Break above BB/VWAP upper with red candle'
                             })
         else:
             # Position management - Exit on stop loss or take profit
             if self.position.size > 0:  # Long position
-                if self.dataclose[0] <= self.stop_price:
+                # Check if low touched stop loss
+                if self.datas[0].low[0] <= self.stop_price:
                     self.close()
                     self._record_trade_outcome('stop_loss', self.stop_price)  # Use exact SL price
-                elif self.dataclose[0] >= self.take_profit_price:
+                # Check if high touched take profit
+                elif self.datas[0].high[0] >= self.take_profit_price:
                     self.close()
                     self._record_trade_outcome('take_profit', self.take_profit_price)  # Use exact TP price
             elif self.position.size < 0:  # Short position
-                if self.dataclose[0] >= self.stop_price:
+                # Check if high touched stop loss
+                if self.datas[0].high[0] >= self.stop_price:
                     self.close()
                     self._record_trade_outcome('stop_loss', self.stop_price)  # Use exact SL price
-                elif self.dataclose[0] <= self.take_profit_price:
+                # Check if low touched take profit
+                elif self.datas[0].low[0] <= self.take_profit_price:
                     self.close()
                     self._record_trade_outcome('take_profit', self.take_profit_price)  # Use exact TP price
 

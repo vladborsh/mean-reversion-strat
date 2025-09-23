@@ -337,7 +337,6 @@ class PerformanceAnalyzer:
             'risk_per_position_pct': risk_config['risk_per_position_pct'],
             'stop_loss_atr_multiplier': risk_config['stop_loss_atr_multiplier'],
             'risk_reward_ratio': risk_config['risk_reward_ratio'],
-            'require_reversal': strategy_config['require_reversal'],
             'regime_min_score': strategy_config['regime_min_score']
         }
 

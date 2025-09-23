@@ -93,7 +93,6 @@ optimization/
 - `risk_reward_ratio` - Risk/reward ratio (1.5 - 5.0)
 
 #### Strategy Behavior
-- `require_reversal` - Require reversal confirmation
 - `regime_min_score` - Market regime filtering threshold
 
 ### 🔍 Expected Performance Improvements
