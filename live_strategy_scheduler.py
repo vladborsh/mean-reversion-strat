@@ -68,13 +68,19 @@ def suppress_stdout():
 class LiveStrategyScheduler:
     """Live trading strategy scheduler for multiple symbols"""
     
-    def __init__(self, config_file_path: str = None, enable_telegram: bool = True):
+    def __init__(self, config_file_path: str = None, enable_telegram: bool = True,
+                 start_date: Optional[str] = None, end_date: Optional[str] = None,
+                 use_cache: bool = True, cache_duration_hours: int = 1):
         """
         Initialize the live strategy scheduler
-        
+
         Args:
             config_file_path: Path to asset config file (defaults to assets_config_wr45.json for win rate >45%)
             enable_telegram: Whether to enable Telegram notifications
+            start_date: Optional start date for signal analysis (format: YYYY-MM-DD)
+            end_date: Optional end date for signal analysis (format: YYYY-MM-DD)
+            use_cache: Whether to enable signal analysis caching
+            cache_duration_hours: How long to cache analysis results
         """
         self.config_file_path = config_file_path or os.path.join(
             os.path.dirname(__file__), 'assets_config_wr45.json'
@@ -82,9 +88,16 @@ class LiveStrategyScheduler:
         self.symbols_config = {}
         self.running = False
         self.enable_telegram = enable_telegram
-        
-        # Initialize the live signal detector
-        self.signal_detector = LiveSignalDetector()
+        self.start_date = start_date
+        self.end_date = end_date
+        self.use_cache = use_cache
+        self.cache_duration_hours = cache_duration_hours
+
+        # Initialize the live signal detector with caching support
+        self.signal_detector = LiveSignalDetector(
+            use_cache=use_cache,
+            cache_duration_hours=cache_duration_hours
+        )
         
         # Initialize the signal chart generator
         self.chart_generator = SignalChartGenerator()
@@ -194,12 +207,26 @@ class LiveStrategyScheduler:
         try:
             logger.info(f"    📊 Fetching data for {fetch_symbol} ({timeframe})...")
             
-            # Create data fetcher with appropriate source and asset type
+            # Determine cache usage - use cache for historical analysis, short cache for live trading
+            use_data_cache = self.use_cache
+            if self.use_cache and (self.start_date or self.end_date):
+                # Historical analysis - use full caching
+                cache_enabled = True
+                logger.debug(f"Using data cache for historical analysis")
+            elif self.use_cache:
+                # Live trading - use cache but with shorter duration (handled by DataFetcher)
+                cache_enabled = True
+                logger.debug(f"Using data cache for live trading")
+            else:
+                cache_enabled = False
+
+            # Create data fetcher with appropriate cache settings
             fetcher = DataFetcher(
                 source='forex',
                 symbol=fetch_symbol,
                 timeframe=timeframe,
-                use_cache=False  # Always fetch fresh data for live trading
+                use_cache=cache_enabled,
+                cache_transport_type='local'
             )
             
             # Calculate years needed for ~999 candles
@@ -262,8 +289,12 @@ class LiveStrategyScheduler:
             config = symbol_config['config']
             strategy_params = self._create_strategy_params(config)
             
-            # Use the live signal detector to analyze the symbol
-            signal_result = self.signal_detector.analyze_symbol(data, strategy_params, symbol)
+            # Use the live signal detector to analyze the symbol with optional date filtering
+            signal_result = self.signal_detector.analyze_symbol(
+                data, strategy_params, symbol,
+                start_date=self.start_date,
+                end_date=self.end_date
+            )
             
             # Get current market data for analysis
             current_candle = data.iloc[-1]
@@ -738,10 +769,54 @@ def main():
         sys.exit(1)
     
     logger.info("✅ Environment variables verified")
-    
-    # Create and start scheduler
+
+    # Parse command-line arguments for date range and caching
+    import argparse
+    parser = argparse.ArgumentParser(description='Live Trading Strategy Scheduler')
+    parser.add_argument('--start-date', type=str, help='Start date for analysis (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=str, help='End date for analysis (YYYY-MM-DD)')
+    parser.add_argument('--no-cache', action='store_true', help='Disable signal analysis caching')
+    parser.add_argument('--cache-duration', type=int, default=1,
+                       help='Cache duration in hours (default: 1)')
+    parser.add_argument('--config', type=str, help='Custom config file path')
+    parser.add_argument('--no-telegram', action='store_true', help='Disable Telegram notifications')
+
+    args = parser.parse_args()
+
+    # Validate date parameters
+    if args.start_date:
+        try:
+            from datetime import datetime
+            datetime.strptime(args.start_date, '%Y-%m-%d')
+        except ValueError:
+            logger.error(f"❌ Invalid start date format: {args.start_date}. Use YYYY-MM-DD")
+            sys.exit(1)
+
+    if args.end_date:
+        try:
+            from datetime import datetime
+            datetime.strptime(args.end_date, '%Y-%m-%d')
+        except ValueError:
+            logger.error(f"❌ Invalid end date format: {args.end_date}. Use YYYY-MM-DD")
+            sys.exit(1)
+
+    # Log configuration
+    if args.start_date or args.end_date:
+        date_range = f"from {args.start_date or 'start'} to {args.end_date or 'end'}"
+        logger.info(f"📅 Date range filter: {date_range}")
+
+    logger.info(f"💾 Signal caching: {'Disabled' if args.no_cache else f'Enabled ({args.cache_duration}h)'}")
+
+    # Create and start scheduler with parameters
     try:
-        scheduler = LiveStrategyScheduler()
+        scheduler = LiveStrategyScheduler(
+            config_file_path=args.config,
+            enable_telegram=not args.no_telegram,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            use_cache=not args.no_cache,
+            cache_duration_hours=args.cache_duration
+        )
         scheduler.start_scheduler()
     except KeyboardInterrupt:
         logger.info("\n🛑 Program interrupted by user")

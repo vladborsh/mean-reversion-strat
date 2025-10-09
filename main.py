@@ -15,7 +15,7 @@ from src.strategy import MeanReversionStrategy
 from src.backtest import run_backtest
 from src.metrics import calculate_metrics
 from src.optimize import grid_search
-from src.strategy_config import DEFAULT_CONFIG, AggressiveConfig, ConservativeConfig
+from src.config import Config
 from src.visualization import (
     plot_price_with_indicators, 
     plot_equity_curve, 
@@ -197,15 +197,15 @@ def generate_visualizations(df, bb, vwap_dict, equity_curve, equity_dates, order
 def run_strategy(df, config_class=None, timeframe='15m'):
     """Run the complete strategy pipeline with configurable parameters"""
     if config_class is None:
-        config_class = DEFAULT_CONFIG
-    
+        config_class = Config
+
     # Get strategy parameters from configuration
     params = config_class.get_backtrader_params()
     risk_config = config_class.get_risk_config()
-    
+
     # Add timeframe to parameters for order lifetime calculation
     params['timeframe'] = timeframe
-    
+
     config_name = getattr(config_class, '__name__', 'CUSTOM')
     print(f"\n=== RUNNING STRATEGY: {config_name.upper()} ===")
     print(f"⏱️  Timeframe: {timeframe} | Risk: {risk_config['risk_per_position_pct']}% | Leverage: {risk_config.get('leverage', 100.0)}:1")
@@ -329,7 +329,7 @@ Examples:
         print(f"\n🎯 Using OPTIMIZED {args.preference.upper()} configuration")
     else:
         # Fallback to default configuration
-        config_class = DEFAULT_CONFIG
+        config_class = Config
         print(f"\n⚠️  Falling back to DEFAULT configuration")
     
     print("\n📈 Fetching data...")
