@@ -93,8 +93,8 @@ class AssetConfig:
             stop_loss_atr_multiplier=risk_params['stop_loss_atr_multiplier'],
             risk_reward_ratio=risk_params['risk_reward_ratio'],
             
-            require_reversal=behavior_params['require_reversal'],
-            regime_min_score=behavior_params['regime_min_score'],
+            require_reversal=behavior_params.get('require_reversal', True),
+            regime_min_score=behavior_params.get('regime_min_score', 60),
             
             final_pnl=performance['final_pnl'],
             total_trades=performance['total_trades'],

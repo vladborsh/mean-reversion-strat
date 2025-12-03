@@ -419,8 +419,8 @@ class BatchResultsAnalyzer:
                 f.write(f"    Risk per trade: {params['RISK_MANAGEMENT']['risk_per_position_pct']}%\n")
                 f.write(f"    Risk/Reward: {params['RISK_MANAGEMENT']['risk_reward_ratio']}\n")
                 f.write(f"    Stop Loss ATR: {params['RISK_MANAGEMENT']['stop_loss_atr_multiplier']}\n")
-                f.write(f"    Require Reversal: {params['STRATEGY_BEHAVIOR']['require_reversal']}\n")
-                f.write(f"    Regime Min Score: {params['STRATEGY_BEHAVIOR']['regime_min_score']}\n")
+                f.write(f"    Require Reversal: {params['STRATEGY_BEHAVIOR'].get('require_reversal', True)}\n")
+                f.write(f"    Regime Min Score: {params['STRATEGY_BEHAVIOR'].get('regime_min_score', 60)}\n")
                 f.write(f"  Source: {config['METADATA']['source_file']}\n")
                 f.write("-" * 60 + "\n")
         
@@ -446,8 +446,8 @@ class BatchResultsAnalyzer:
                 'risk_per_position_pct': config['RISK_MANAGEMENT']['risk_per_position_pct'],
                 'stop_loss_atr_multiplier': config['RISK_MANAGEMENT']['stop_loss_atr_multiplier'],
                 'risk_reward_ratio': config['RISK_MANAGEMENT']['risk_reward_ratio'],
-                'require_reversal': config['STRATEGY_BEHAVIOR']['require_reversal'],
-                'regime_min_score': config['STRATEGY_BEHAVIOR']['regime_min_score']
+                'require_reversal': config['STRATEGY_BEHAVIOR'].get('require_reversal', True),
+                'regime_min_score': config['STRATEGY_BEHAVIOR'].get('regime_min_score', 60)
             }
             csv_data.append(row)
         
