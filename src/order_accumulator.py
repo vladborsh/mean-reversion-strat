@@ -186,8 +186,7 @@ class OrderAccumulator:
             'risk_per_position_pct': optimization_params.get('risk_per_position_pct', 0),
             'stop_loss_atr_multiplier': optimization_params.get('stop_loss_atr_multiplier', 0),
             'risk_reward_ratio_param': optimization_params.get('risk_reward_ratio', 0),
-            'require_reversal': optimization_params.get('require_reversal', False),
-            
+
             # Additional metadata
             'order_id': order.get('order_id', ''),
             'reason': order.get('reason', ''),

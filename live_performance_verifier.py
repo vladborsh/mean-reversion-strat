@@ -20,6 +20,7 @@ import json
 import sys
 import os
 import logging
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
 import pandas as pd
@@ -66,15 +67,32 @@ class PerformanceAnalyzer:
     Analyzes live strategy performance by replaying the strategy on historical data
     """
 
-    def __init__(self, config_file_path: str):
+    def __init__(self, config_file_path: str, use_cache: bool = True, cache_duration_hours: int = 24):
         """
         Initialize performance analyzer
 
         Args:
             config_file_path: Path to asset configuration file
+            use_cache: Whether to enable caching of analysis results
+            cache_duration_hours: How long to cache results (default: 24 hours)
         """
         self.config_file_path = config_file_path
         self.symbols_config = {}
+        self.use_cache = use_cache
+        self.cache_duration_hours = cache_duration_hours
+        self._analysis_cache = {}  # In-memory cache
+
+        # Try to initialize persistent cache
+        self._persistent_cache = None
+        if use_cache:
+            try:
+                from src.data_cache import DataCache
+                from src.transport_factory import create_cache_transport
+                transport = create_cache_transport(transport_type='local')
+                self._persistent_cache = DataCache(transport=transport)
+                logger.info("Persistent cache enabled for performance analysis")
+            except Exception as e:
+                logger.warning(f"Failed to initialize persistent cache: {e}")
 
         # Load symbol configurations
         try:
@@ -132,12 +150,13 @@ class PerformanceAnalyzer:
         try:
             logger.debug(f"Fetching historical data for {fetch_symbol} ({timeframe}) from {start_date.date()} to {end_date.date()}")
 
-            # Create data fetcher - disable cache to avoid stale data issues
+            # Create data fetcher - respect analyzer's cache setting for historical data
             fetcher = DataFetcher(
                 source='forex',
                 symbol=fetch_symbol,
                 timeframe=timeframe,
-                use_cache=False  # Disable cache to get fresh data
+                use_cache=self.use_cache,  # Respect analyzer's cache setting
+                cache_transport_type='local'
             )
 
             # Calculate years needed for the time period
@@ -179,6 +198,72 @@ class PerformanceAnalyzer:
                 logger.error(f"Error fetching data for {fetch_symbol}: {e}")
             return None
 
+    def _generate_cache_key(self, symbol_key: str, start_date: datetime, end_date: datetime) -> str:
+        """Generate unique cache key for analysis results"""
+        # Include symbol, date range in cache key
+        cache_str = f"{symbol_key}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+        return f"perf_{hashlib.md5(cache_str.encode()).hexdigest()[:16]}"
+
+    def _get_cached_result(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """Get cached analysis result if available"""
+        # Check in-memory cache
+        if cache_key in self._analysis_cache:
+            cached = self._analysis_cache[cache_key]
+            cache_time = datetime.fromisoformat(cached['timestamp'])
+            age_hours = (datetime.now() - cache_time).total_seconds() / 3600
+
+            if age_hours < self.cache_duration_hours:
+                logger.debug(f"Cache hit for {cache_key} (age: {age_hours:.1f}h)")
+                return cached['result']
+            else:
+                del self._analysis_cache[cache_key]
+
+        # Check persistent cache
+        if self._persistent_cache:
+            try:
+                cached_data = self._persistent_cache.get(
+                    source='performance_analysis',
+                    symbol=cache_key,
+                    timeframe='analysis',
+                    years=None,
+                    additional_params={'cache_duration': self.cache_duration_hours}
+                )
+                if cached_data:
+                    logger.debug(f"Persistent cache hit for {cache_key}")
+                    # Store in memory cache too
+                    self._analysis_cache[cache_key] = {
+                        'timestamp': datetime.now().isoformat(),
+                        'result': cached_data
+                    }
+                    return cached_data
+            except Exception as e:
+                logger.warning(f"Failed to retrieve from persistent cache: {e}")
+
+        return None
+
+    def _store_cached_result(self, cache_key: str, result: Dict[str, Any]):
+        """Store analysis result in cache"""
+        # Store in memory
+        self._analysis_cache[cache_key] = {
+            'timestamp': datetime.now().isoformat(),
+            'result': result
+        }
+
+        # Store in persistent cache
+        if self._persistent_cache:
+            try:
+                self._persistent_cache.set(
+                    source='performance_analysis',
+                    symbol=cache_key,
+                    timeframe='analysis',
+                    years=None,
+                    data=result,
+                    metadata={'cache_duration': self.cache_duration_hours}
+                )
+                logger.debug(f"Stored result in persistent cache: {cache_key}")
+            except Exception as e:
+                logger.warning(f"Failed to store in persistent cache: {e}")
+
     def analyze_symbol_performance(self, symbol_key: str, symbol_config: Dict[str, Any],
                                  start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """
@@ -194,6 +279,16 @@ class PerformanceAnalyzer:
             Performance analysis results dictionary
         """
         symbol = symbol_config['symbol']
+
+        # Check cache first if enabled
+        cache_key = None
+        if self.use_cache:
+            cache_key = self._generate_cache_key(symbol_key, start_date, end_date)
+            cached_result = self._get_cached_result(cache_key)
+            if cached_result is not None:
+                logger.info(f"Using cached analysis for {symbol}")
+                return cached_result
+
         logger.info(f"Analyzing performance for {symbol}...")
 
         # Fetch historical data
@@ -278,7 +373,7 @@ class PerformanceAnalyzer:
 
             logger.debug(f"Backtest completed for {symbol}: {len(completed_trades)} trades, {signals_generated} signals")
 
-            return {
+            result = {
                 'symbol': symbol,
                 'status': 'analyzed',
                 'signals_generated': signals_generated,
@@ -295,6 +390,12 @@ class PerformanceAnalyzer:
                 'equity_dates': equity_dates,
                 'data': data  # Store data for visualization
             }
+
+            # Cache successful results
+            if self.use_cache and cache_key:
+                self._store_cached_result(cache_key, result)
+
+            return result
 
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
@@ -346,7 +447,7 @@ class PerformanceAnalyzer:
         Analyze performance for all configured symbols
 
         Args:
-            period: Time period for analysis (e.g., '3w', '21d')
+            period: Time period for analysis (e.g., '3w', '21d') or date range string ('YYYY-MM-DD to YYYY-MM-DD')
             symbols_filter: Optional list of symbols to analyze (default: all)
 
         Returns:
@@ -354,9 +455,21 @@ class PerformanceAnalyzer:
         """
         logger.info(f"Starting performance analysis for period: {period}")
 
-        # Calculate date range
-        start_date, end_date = self.calculate_date_range(period)
-        logger.info(f"Analysis period: {start_date.date()} to {end_date.date()}")
+        # Determine if period is a date range or a period string
+        if ' to ' in period:
+            # Parse date range string (format: "YYYY-MM-DD to YYYY-MM-DD")
+            try:
+                date_parts = period.split(' to ')
+                start_date = datetime.strptime(date_parts[0], '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                end_date = datetime.strptime(date_parts[1], '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                logger.info(f"Using explicit date range: {start_date.date()} to {end_date.date()}")
+            except (ValueError, IndexError) as e:
+                logger.error(f"Invalid date range format: {period}. Expected 'YYYY-MM-DD to YYYY-MM-DD'")
+                raise ValueError(f"Invalid date range format: {period}")
+        else:
+            # Calculate date range from period string
+            start_date, end_date = self.calculate_date_range(period)
+            logger.info(f"Analysis period: {start_date.date()} to {end_date.date()}")
 
         # Filter symbols if requested
         symbols_to_analyze = self.symbols_config
@@ -1111,10 +1224,13 @@ Examples:
   %(prog)s                           # Analyze last 3 weeks (default)
   %(prog)s --period 1m               # Analyze last month
   %(prog)s --period 14d              # Analyze last 14 days
+  %(prog)s --start-date 2025-01-01 --end-date 2025-09-01  # Specific date range
   %(prog)s --symbols EURUSD GBPUSD   # Analyze specific symbols only
   %(prog)s --detailed                # Show detailed trade information
   %(prog)s --chart                   # Generate P&L curve chart
   %(prog)s --detailed --chart        # Detailed analysis with chart
+  %(prog)s --cache-duration 48       # Cache results for 48 hours
+  %(prog)s --no-cache                # Disable caching
   %(prog)s --export json results.json # Export results to JSON
         """
     )
@@ -1123,6 +1239,33 @@ Examples:
         '--period', '-p',
         default='3w',
         help='Analysis period (e.g., 3w=3 weeks, 21d=21 days, 1m=1 month). Default: 3w'
+    )
+
+    # Add date range parameters
+    parser.add_argument(
+        '--start-date',
+        type=str,
+        help='Start date for analysis (YYYY-MM-DD format). Overrides --period if specified'
+    )
+
+    parser.add_argument(
+        '--end-date',
+        type=str,
+        help='End date for analysis (YYYY-MM-DD format). Overrides --period if specified'
+    )
+
+    # Add caching parameters
+    parser.add_argument(
+        '--cache-duration',
+        type=int,
+        default=24,
+        help='Cache duration in hours for analysis results (default: 24)'
+    )
+
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Disable caching of analysis results'
     )
 
     parser.add_argument(
@@ -1185,12 +1328,46 @@ Examples:
         sys.exit(1)
 
     try:
-        # Initialize analyzer
-        analyzer = PerformanceAnalyzer(config_path)
+        # Initialize analyzer with cache settings
+        analyzer = PerformanceAnalyzer(
+            config_path,
+            use_cache=not args.no_cache,
+            cache_duration_hours=args.cache_duration
+        )
+
+        # Determine date range
+        period_str = None
+        if args.start_date and args.end_date:
+            # Use explicit date range
+            try:
+                start_date = datetime.strptime(args.start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                end_date = datetime.strptime(args.end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+
+                if start_date >= end_date:
+                    logger.error(f"Start date ({args.start_date}) must be before end date ({args.end_date})")
+                    sys.exit(1)
+
+                period_str = f"{args.start_date} to {args.end_date}"
+                logger.info(f"Using explicit date range: {period_str}")
+            except ValueError as e:
+                logger.error(f"Invalid date format: {e}. Use YYYY-MM-DD format")
+                sys.exit(1)
+        elif args.start_date or args.end_date:
+            logger.error("Both --start-date and --end-date must be specified together")
+            sys.exit(1)
+        else:
+            # Use period-based calculation
+            period_str = args.period
+
+        # Log caching configuration
+        if args.no_cache:
+            logger.info("Cache disabled for this run")
+        else:
+            logger.info(f"Cache enabled with {args.cache_duration} hour duration")
 
         # Run analysis
         logger.info("Starting performance analysis...")
-        results = analyzer.analyze_all_symbols(args.period, args.symbols)
+        results = analyzer.analyze_all_symbols(period_str, args.symbols)
 
         # Display results
         display_results(results, detailed=args.detailed, generate_chart=args.chart,

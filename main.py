@@ -15,7 +15,7 @@ from src.strategy import MeanReversionStrategy
 from src.backtest import run_backtest
 from src.metrics import calculate_metrics
 from src.optimize import grid_search
-from src.strategy_config import DEFAULT_CONFIG, AggressiveConfig, ConservativeConfig
+from src.config import Config
 from src.visualization import (
     plot_price_with_indicators, 
     plot_equity_curve, 
@@ -112,7 +112,7 @@ def create_custom_config_class(config_dict: Dict[str, Any]):
                 'vwap_std': vwap_config['std_dev'],
                 'vwap_anchor': 'day',  # Default anchor
                 'atr_period': atr_config['period'],
-                'require_reversal': strategy_config.get('require_reversal', True),
+                'require_reversal': strategy_config.get('require_reversal', False),
                 'regime_min_score': strategy_config.get('regime_min_score', 60),
                 'regime_enabled': True
             }
@@ -198,15 +198,15 @@ def generate_visualizations(df, bb, vwap_dict, equity_curve, equity_dates, order
 def run_strategy(df, config_class=None, timeframe='15m'):
     """Run the complete strategy pipeline with configurable parameters"""
     if config_class is None:
-        config_class = DEFAULT_CONFIG
-    
+        config_class = Config
+
     # Get strategy parameters from configuration
     params = config_class.get_backtrader_params()
     risk_config = config_class.get_risk_config()
-    
+
     # Add timeframe to parameters for order lifetime calculation
     params['timeframe'] = timeframe
-    
+
     config_name = getattr(config_class, '__name__', 'CUSTOM')
     print(f"\n=== RUNNING STRATEGY: {config_name.upper()} ===")
     print(f"⏱️  Timeframe: {timeframe} | Risk: {risk_config['risk_per_position_pct']}% | Leverage: {risk_config.get('leverage', 100.0)}:1")
@@ -215,7 +215,7 @@ def run_strategy(df, config_class=None, timeframe='15m'):
     print(f"📊 Bollinger Bands: {params['bb_window']} period, {params['bb_std']} std dev")
     print(f"📈 VWAP Bands: {params['vwap_window']} period, {params['vwap_std']} std dev")
     print(f"🎯 Risk Management: {risk_config['stop_loss_atr_multiplier']}x ATR stop, 1:{risk_config['risk_reward_ratio']} R:R")
-    print(f"🔄 Strategy: Reversal required: {params.get('require_reversal', False)}, Regime score: {params.get('regime_min_score', 60)}")
+    print(f"🔄 Strategy: Regime score: {params.get('regime_min_score', 60)}")
     
     # Calculate indicators
     bb_window = params['bb_window']
@@ -330,7 +330,7 @@ Examples:
         print(f"\n🎯 Using OPTIMIZED {args.preference.upper()} configuration")
     else:
         # Fallback to default configuration
-        config_class = DEFAULT_CONFIG
+        config_class = Config
         print(f"\n⚠️  Falling back to DEFAULT configuration")
     
     print("\n📈 Fetching data...")

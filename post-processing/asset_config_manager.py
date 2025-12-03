@@ -93,7 +93,7 @@ class AssetConfig:
             stop_loss_atr_multiplier=risk_params['stop_loss_atr_multiplier'],
             risk_reward_ratio=risk_params['risk_reward_ratio'],
             
-            require_reversal=behavior_params.get('require_reversal', True),
+            require_reversal=behavior_params.get('require_reversal', False),
             regime_min_score=behavior_params.get('regime_min_score', 60),
             
             final_pnl=performance['final_pnl'],
@@ -123,7 +123,7 @@ class AssetConfig:
                 'atr_period': self.atr_period
             },
             'ENTRY_CONDITIONS': {
-                'require_reversal_confirmation': self.require_reversal
+                'require_reversal': self.require_reversal
             },
             'MARKET_REGIME': {
                 'min_regime_score': self.regime_min_score
@@ -133,7 +133,7 @@ class AssetConfig:
     def __str__(self) -> str:
         return (f"AssetConfig({self.symbol}_{self.timeframe}: "
                 f"PnL=${self.final_pnl:,.0f}, WR={self.win_rate:.1f}%, "
-                f"Sharpe={self.sharpe_ratio:.2f})")
+                f"Sharpe={self.sharpe_ratio:.2f}, ReverseReq={self.require_reversal})")
 
 class AssetConfigManager:
     """Manages asset-specific configurations from optimization results"""
@@ -281,7 +281,8 @@ class AssetConfigManager:
             strategy_config_module.RISK_MANAGEMENT['atr_period'] = config.atr_period
             
             # Update Entry Conditions (note: attribute name mapping)
-            strategy_config_module.ENTRY_CONDITIONS['require_reversal_confirmation'] = config.require_reversal
+            if hasattr(strategy_config_module, 'ENTRY_CONDITIONS'):
+                strategy_config_module.ENTRY_CONDITIONS['require_reversal'] = config.require_reversal
             
             # Update Market Regime
             strategy_config_module.MARKET_REGIME['min_regime_score'] = config.regime_min_score

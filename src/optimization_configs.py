@@ -36,9 +36,6 @@ class OptimizationConfigs:
             'stop_loss_atr_multiplier': [1.0, 1.2, 1.5],
             'risk_reward_ratio': [2.5, 3.0, 3.5],
             
-            # Strategy behavior
-            'require_reversal': [False],
-            
             # Market regime filtering
             'regime_min_score': [60, 70],
         }
@@ -58,9 +55,6 @@ class OptimizationConfigs:
             'risk_per_position_pct': [0.5, 1.0, 1.5, 2.0, 2.5],
             'stop_loss_atr_multiplier': [1.0, 1.2, 1.5, 2.0],
             'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5, 4.0],
-            
-            # Strategy behavior
-            'require_reversal': [True, False],
             
             # Market regime filtering
             'regime_min_score': [40, 50, 60, 70, 80],
@@ -103,7 +97,6 @@ class OptimizationConfigs:
             'vwap_window': [10, 15, 20, 25, 30, 35, 40],
             'vwap_std': [1.0, 1.5, 2.0, 2.5, 3.0, 3.5],
             'atr_period': [5, 10, 14, 20, 25, 30],
-            'require_reversal': [True, False],
             'regime_min_score': [30, 40, 50, 60, 70, 80, 90],
             
             # Continuous ranges (min, max)
@@ -126,9 +119,6 @@ class OptimizationConfigs:
             'risk_per_position_pct': [0.5, 0.75, 1.0, 1.25],  # Lower risk values to reduce drawdown
             'stop_loss_atr_multiplier': [0.8, 1.0, 1.2, 1.5],  # Tighter stops to minimize drawdown
             'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5],  # Balanced risk/reward
-            
-            # Strategy behavior for smoother equity curve
-            'require_reversal': [True],  # Require confirmation to reduce false signals
             
             # Market regime filtering to avoid unfavorable conditions
             'regime_min_score': [60, 70, 80],  # Higher filtering to avoid drawdowns
@@ -204,9 +194,6 @@ class MarketConditionConfigs:
             # Tighter stops and higher rewards for trends
             'stop_loss_atr_multiplier': [0.8, 1.0, 1.2],
             'risk_reward_ratio': [3.0, 3.5, 4.0],
-            
-            # Require reversal confirmation in trending markets
-            'require_reversal': [True],
             
             # Higher regime score to avoid false signals
             'regime_min_score': [70, 80, 90],
@@ -290,8 +277,8 @@ class TimeframeConfigs:
             # Higher risk for frequent trades
             'risk_per_position_pct': [0.25, 0.5, 0.75],
             
-            # Quick reversal confirmation
-            'require_reversal': [True],
+            # Lower regime filtering to capture opportunities
+            'regime_min_score': [40, 50, 60],
         }
     
     @staticmethod
@@ -310,8 +297,8 @@ class TimeframeConfigs:
             # Moderate risk for longer-term trades
             'risk_per_position_pct': [1.0, 1.5, 2.0],
             
-            # Both reversal strategies
-            'require_reversal': [True, False],
+            # Market regime filtering
+            'regime_min_score': [50, 60, 70],
         }
 
 

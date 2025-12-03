@@ -78,15 +78,12 @@ class ParameterGrid:
             'vwap_std': [1.5, 2.0, 2.5],
             
             # Risk management
-            'risk_per_position_pct': [0.5, 1.0, 1.5, 2.0],
+            'risk_per_position_pct': [0.5, 0.7, 1.0],
             'stop_loss_atr_multiplier': [1.0, 1.2, 1.5, 2.0],
             'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5],
             
             # ATR period
             'atr_period': [10, 14, 20],
-            
-            # Strategy behavior
-            'require_reversal': [True, False],
             
             # Market regime (if enabled)
             'regime_min_score': [40, 50, 60, 70],
@@ -608,7 +605,6 @@ Last Result: PnL=${current_result.final_pnl:,.2f}, DD={current_result.max_drawdo
             'vwap_window': 'vwap_window',
             'vwap_std': 'vwap_std',
             'atr_period': 'atr_period',
-            'require_reversal': 'require_reversal',
             'regime_min_score': 'regime_min_score',
             # Risk management parameters - pass directly to strategy
             'risk_per_position_pct': 'risk_per_position_pct',

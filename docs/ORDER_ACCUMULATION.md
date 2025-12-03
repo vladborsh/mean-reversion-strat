@@ -77,7 +77,6 @@ The CSV files contain the following columns:
 - `risk_per_position_pct`: Risk per position percentage
 - `stop_loss_atr_multiplier`: Stop loss ATR multiplier
 - `risk_reward_ratio_param`: Risk/reward ratio parameter
-- `require_reversal`: Whether reversal confirmation was required
 
 ### Additional Info
 - `order_id`: Unique order identifier

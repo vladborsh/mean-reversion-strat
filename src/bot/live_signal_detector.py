@@ -5,13 +5,20 @@ Live Signal Detector
 This module provides functionality to detect trading signals from the MeanReversionStrategy
 in real-time using backtrader's cerebro engine. It captures new orders that the strategy
 would place at the current time without actually executing trades.
+
+Features:
+- Date range filtering for historical analysis
+- Signal analysis caching for performance
+- Support for both real-time and historical signal detection
 """
 
 import pandas as pd
 import backtrader as bt
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+import hashlib
+import json
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -167,19 +174,49 @@ class LiveSignalDetector:
     """
     Detects live trading signals by running MeanReversionStrategy through cerebro
     and capturing new orders placed at current time
+
+    Features:
+    - Date range filtering for historical analysis
+    - Caching of signal analysis results
+    - Support for both real-time and historical detection
     """
-    
-    def __init__(self):
-        """Initialize the live signal detector"""
-        pass
-    
-    def prepare_backtrader_data(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
+
+    def __init__(self, use_cache: bool = True, cache_duration_hours: int = 1):
         """
-        Prepare pandas DataFrame for backtrader consumption
-        
+        Initialize the live signal detector
+
+        Args:
+            use_cache: Whether to enable signal analysis caching
+            cache_duration_hours: How long to cache analysis results (default 1 hour)
+        """
+        self.use_cache = use_cache
+        self.cache_duration_hours = cache_duration_hours
+        self._signal_cache = {}  # In-memory cache for signal analysis
+        self._cache_cleanup_counter = 0  # Counter for periodic cleanup
+
+        # Try to use persistent cache if available
+        self._persistent_cache = None
+        if use_cache:
+            try:
+                from ..data_cache import DataCache
+                from ..transport_factory import create_cache_transport
+                transport = create_cache_transport(transport_type='local')
+                self._persistent_cache = DataCache(transport=transport)
+                logger.info("Persistent cache enabled for signal analysis")
+            except Exception as e:
+                logger.warning(f"Failed to initialize persistent cache, using in-memory only: {e}")
+    
+    def prepare_backtrader_data(self, data: pd.DataFrame,
+                               start_date: Optional[Union[str, datetime]] = None,
+                               end_date: Optional[Union[str, datetime]] = None) -> Optional[pd.DataFrame]:
+        """
+        Prepare pandas DataFrame for backtrader consumption with optional date filtering
+
         Args:
             data: Raw OHLCV data
-            
+            start_date: Optional start date for filtering (string or datetime)
+            end_date: Optional end date for filtering (string or datetime)
+
         Returns:
             Processed DataFrame ready for backtrader or None if failed
         """
@@ -187,7 +224,22 @@ class LiveSignalDetector:
             # Ensure data has the correct format for backtrader
             if not isinstance(data.index, pd.DatetimeIndex):
                 data.index = pd.to_datetime(data.index)
-            
+
+            # Apply date range filtering if specified
+            if start_date is not None or end_date is not None:
+                # Parse dates
+                if start_date is not None:
+                    if isinstance(start_date, str):
+                        start_date = pd.to_datetime(start_date)
+                    data = data[data.index >= start_date]
+                    logger.debug(f"Filtered data from {start_date}")
+
+                if end_date is not None:
+                    if isinstance(end_date, str):
+                        end_date = pd.to_datetime(end_date)
+                    data = data[data.index <= end_date]
+                    logger.debug(f"Filtered data until {end_date}")
+
             # Make sure all required columns exist and are properly named
             data = data.copy()
             required_columns = ['open', 'high', 'low', 'close', 'volume']
@@ -199,20 +251,20 @@ class LiveSignalDetector:
                     else:
                         logger.debug(f"Required column '{col}' not found in data")
                         return None
-            
+
             # Ensure all data is numeric
             for col in required_columns:
                 data[col] = pd.to_numeric(data[col], errors='coerce')
-            
+
             # Drop any rows with NaN values
             data = data.dropna()
-            
+
             if data.empty:
                 logger.debug("Data is empty after cleaning")
                 return None
-            
+
             return data[required_columns]
-            
+
         except Exception as e:
             logger.debug(f"Error preparing backtrader data: {e}")
             return None
@@ -294,21 +346,172 @@ class LiveSignalDetector:
                 'reason': f'Analysis error: {str(e)}'
             }
     
-    def analyze_symbol(self, data: pd.DataFrame, strategy_params: Dict[str, Any], symbol: str) -> Dict[str, Any]:
+    def _generate_cache_key(self, symbol: str, strategy_params: Dict[str, Any],
+                           start_date: Optional[datetime] = None,
+                           end_date: Optional[datetime] = None) -> str:
         """
-        Complete analysis pipeline: prepare data and detect signals
-        
+        Generate a unique cache key for signal analysis
+
+        Args:
+            symbol: Trading symbol
+            strategy_params: Strategy parameters
+            start_date: Optional start date
+            end_date: Optional end date
+
+        Returns:
+            Unique cache key string
+        """
+        # Create a stable hash of strategy parameters
+        params_str = json.dumps(strategy_params, sort_keys=True)
+        params_hash = hashlib.md5(params_str.encode()).hexdigest()[:8]
+
+        # Format dates for cache key
+        start_str = start_date.strftime('%Y%m%d') if start_date else 'none'
+        end_str = end_date.strftime('%Y%m%d') if end_date else 'none'
+
+        # Combine into cache key
+        cache_key = f"signal_{symbol}_{params_hash}_{start_str}_{end_str}"
+        return cache_key
+
+    def _get_cached_result(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get cached analysis result if available
+
+        Args:
+            cache_key: Cache key to lookup
+
+        Returns:
+            Cached result or None if not found/expired
+        """
+        # Clean up old cache entries periodically
+        self._cache_cleanup_counter += 1
+        if self._cache_cleanup_counter >= 100:
+            self._cleanup_cache()
+            self._cache_cleanup_counter = 0
+
+        # Check in-memory cache first
+        if cache_key in self._signal_cache:
+            cached_entry = self._signal_cache[cache_key]
+            cache_time = datetime.fromisoformat(cached_entry['timestamp'])
+            age = (datetime.now() - cache_time).total_seconds() / 3600  # Age in hours
+
+            if age < self.cache_duration_hours:
+                logger.debug(f"Cache hit for {cache_key} (age: {age:.1f} hours)")
+                return cached_entry['result']
+            else:
+                # Remove expired entry
+                del self._signal_cache[cache_key]
+
+        # Try persistent cache if available
+        if self._persistent_cache:
+            try:
+                # Use the DataCache with signal analysis type
+                cached_data = self._persistent_cache.get(
+                    source='signal_analysis',
+                    symbol=cache_key,
+                    timeframe='analysis',
+                    years=None,
+                    additional_params={'cache_duration': self.cache_duration_hours}
+                )
+                if cached_data is not None:
+                    logger.debug(f"Persistent cache hit for {cache_key}")
+                    # Store in memory cache for faster subsequent access
+                    self._signal_cache[cache_key] = {
+                        'timestamp': datetime.now().isoformat(),
+                        'result': cached_data
+                    }
+                    return cached_data
+            except Exception as e:
+                logger.warning(f"Failed to retrieve from persistent cache: {e}")
+
+        return None
+
+    def _store_cached_result(self, cache_key: str, result: Dict[str, Any]):
+        """
+        Store analysis result in cache
+
+        Args:
+            cache_key: Cache key
+            result: Analysis result to cache
+        """
+        # Store in in-memory cache
+        self._signal_cache[cache_key] = {
+            'timestamp': datetime.now().isoformat(),
+            'result': result
+        }
+
+        # Try to store in persistent cache
+        if self._persistent_cache:
+            try:
+                self._persistent_cache.set(
+                    source='signal_analysis',
+                    symbol=cache_key,
+                    timeframe='analysis',
+                    years=None,
+                    data=result,
+                    metadata={'cache_duration': self.cache_duration_hours}
+                )
+                logger.debug(f"Stored result in persistent cache: {cache_key}")
+            except Exception as e:
+                logger.warning(f"Failed to store in persistent cache: {e}")
+
+    def _cleanup_cache(self):
+        """Remove expired entries from in-memory cache"""
+        current_time = datetime.now()
+        expired_keys = []
+
+        for key, entry in self._signal_cache.items():
+            cache_time = datetime.fromisoformat(entry['timestamp'])
+            age_hours = (current_time - cache_time).total_seconds() / 3600
+
+            if age_hours >= self.cache_duration_hours:
+                expired_keys.append(key)
+
+        for key in expired_keys:
+            del self._signal_cache[key]
+
+        if expired_keys:
+            logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
+
+    def analyze_symbol(self, data: pd.DataFrame, strategy_params: Dict[str, Any], symbol: str,
+                      start_date: Optional[Union[str, datetime]] = None,
+                      end_date: Optional[Union[str, datetime]] = None,
+                      use_cache: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Complete analysis pipeline: prepare data and detect signals with caching
+
         Args:
             data: Raw OHLCV data
             strategy_params: Strategy parameters
             symbol: Trading symbol
-            
+            start_date: Optional start date for analysis
+            end_date: Optional end date for analysis
+            use_cache: Override instance cache setting (None = use instance setting)
+
         Returns:
             Signal analysis result
         """
+        # Parse date parameters
+        if start_date and isinstance(start_date, str):
+            start_date = pd.to_datetime(start_date)
+        if end_date and isinstance(end_date, str):
+            end_date = pd.to_datetime(end_date)
+
+        # Determine if caching should be used
+        use_cache = self.use_cache if use_cache is None else use_cache
+
+        # Check cache if enabled
+        cache_key = None
+        if use_cache:
+            cache_key = self._generate_cache_key(symbol, strategy_params, start_date, end_date)
+            cached_result = self._get_cached_result(cache_key)
+            if cached_result is not None:
+                logger.info(f"Using cached signal analysis for {symbol}")
+                return cached_result
+
         # Validate data quality
         if len(data) < 100:
-            return {
+            result = {
                 'signal_type': 'insufficient_data',
                 'direction': 'HOLD',
                 'entry_price': 0.0,
@@ -319,11 +522,13 @@ class LiveSignalDetector:
                 'atr_value': 0.0,
                 'reason': f'Insufficient data points: {len(data)} < 100'
             }
-        
-        # Prepare data for backtrader
-        bt_data = self.prepare_backtrader_data(data)
+            # Don't cache error results
+            return result
+
+        # Prepare data for backtrader with date filtering
+        bt_data = self.prepare_backtrader_data(data, start_date, end_date)
         if bt_data is None:
-            return {
+            result = {
                 'signal_type': 'data_preparation_failed',
                 'direction': 'HOLD',
                 'entry_price': 0.0,
@@ -334,6 +539,19 @@ class LiveSignalDetector:
                 'atr_value': 0.0,
                 'reason': 'Failed to prepare data for backtrader'
             }
-        
+            # Don't cache error results
+            return result
+
+        # Log date range being analyzed
+        if start_date or end_date:
+            date_range = f"from {start_date or 'start'} to {end_date or 'end'}"
+            logger.info(f"Analyzing {symbol} {date_range}")
+
         # Detect signals using cerebro
-        return self.detect_signals(bt_data, strategy_params, symbol)
+        result = self.detect_signals(bt_data, strategy_params, symbol)
+
+        # Cache successful results
+        if use_cache and cache_key and result['signal_type'] not in ['error', 'data_preparation_failed']:
+            self._store_cached_result(cache_key, result)
+
+        return result

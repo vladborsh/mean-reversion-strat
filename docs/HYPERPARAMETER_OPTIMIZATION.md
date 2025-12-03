@@ -220,7 +220,6 @@ python cache_manager.py --info
 
 | Parameter | Description | Options | Default |
 |-----------|-------------|---------|---------|
-| `require_reversal` | Require reversal confirmation | True/False | True |
 
 ### Market Regime Filtering
 
@@ -307,8 +306,7 @@ from src.hyperparameter_optimizer import HyperparameterOptimizer
 custom_grid = {
     'bb_window': [15, 20, 25],
     'risk_per_position_pct': [0.5, 1.0, 1.5, 2.0],
-    'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5, 4.0],
-}
+    'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5, 4.0]}
 
 # Run optimization
 optimizer = HyperparameterOptimizer(

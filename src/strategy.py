@@ -3,21 +3,26 @@ import pandas as pd
 import logging
 from .indicators import Indicators
 from .risk_management import RiskManager, ATRIndicator, create_risk_manager
-from .strategy_config import DEFAULT_CONFIG
+from .config import Config
 from .market_regime import MarketRegimeFilter
+from .trailing_stop import TrailingStopManager
 
 logger = logging.getLogger(__name__)
 
 class MeanReversionStrategy(bt.Strategy):
     # Get default params and extend with timeframe and risk management
-    base_params = DEFAULT_CONFIG.get_backtrader_params()
+    base_params = Config.get_backtrader_params()
     base_params['timeframe'] = '15m'  # Default timeframe
-    
+
     # Add risk management parameters with defaults
-    risk_config = DEFAULT_CONFIG.get_risk_config()
+    risk_config = Config.get_risk_config()
     base_params['risk_per_position_pct'] = risk_config['risk_per_position_pct']
     base_params['stop_loss_atr_multiplier'] = risk_config['stop_loss_atr_multiplier']
     base_params['risk_reward_ratio'] = risk_config['risk_reward_ratio']
+    
+    # Add trailing stop configuration
+    trailing_stop_config = Config.get_trailing_stop_config()
+    base_params['trailing_stop_enabled'] = trailing_stop_config['enabled']
     
     # Removed verbose parameter - using logger instead
     
@@ -37,7 +42,7 @@ class MeanReversionStrategy(bt.Strategy):
         self.order_lifetime_minutes = None
         
         # Initialize risk manager with strategy parameters if available, otherwise use defaults
-        risk_config = DEFAULT_CONFIG.get_risk_config()
+        risk_config = Config.get_risk_config()
         
         # Override with strategy parameters if provided
         if hasattr(self.p, 'risk_per_position_pct'):
@@ -84,10 +89,23 @@ class MeanReversionStrategy(bt.Strategy):
         # Deposit tracking for trade outcomes
         self.current_order_id = None
         self.deposit_before_trade = None
-        
+
         # Equity curve tracking for proper portfolio value history
         self.equity_curve = []
         self.equity_dates = []
+
+        # Initialize trailing stop manager if enabled
+        trailing_stop_enabled = getattr(self.p, 'trailing_stop_enabled', False)
+        if trailing_stop_enabled:
+            trailing_stop_config = Config.get_trailing_stop_config()
+            self.trailing_stop_manager = TrailingStopManager(
+                activation_pct=trailing_stop_config.get('activation_pct', 50.0),
+                breakeven_plus_pct=trailing_stop_config.get('breakeven_plus_pct', 20.0)
+            )
+            logger.info("Trailing Stop Manager enabled")
+        else:
+            self.trailing_stop_manager = None
+            logger.info("Trailing Stop Manager disabled")
         
         # Set order lifetime based on timeframe
         timeframe = getattr(self.p, 'timeframe', '15m')
@@ -114,7 +132,7 @@ class MeanReversionStrategy(bt.Strategy):
     def next(self):
         # Track portfolio value for equity curve (do this first)
         self._track_portfolio_value()
-        
+
         # Skip if ATR is not available yet
         if len(self.atr) == 0 or self.atr[0] == 0:
             return
@@ -134,41 +152,31 @@ class MeanReversionStrategy(bt.Strategy):
         if not self.position:
             # Check if we're within trading hours (6 UTC - 17 UTC)
             if not self._is_trading_hours():
-                # Optional debug logging for trading hours (uncomment if needed)
-                # current_time = self.datas[0].datetime.time(0)
-                # logger.debug(f"TRADING BLOCKED - Outside hours (6-17 UTC). Current: {current_time.hour:02d}:{current_time.minute:02d}")
                 return  # Skip trading outside of allowed hours
-            
-            # Long signal - Buy when price breaks below both bands and shows reversal
-            if (self.dataclose[0] < self.bb_lower[0] and 
-                self.dataclose[0] < self.vwap_lower[0]):
-                
-                # Check for reversal confirmation if required
-                reversal_confirmed = True
-                if self.p.require_reversal:
-                    reversal_confirmed = (self.dataclose[-1] < self.bb_lower[-1] and 
-                                        self.dataclose[0] > self.dataclose[-1])
-                
-                if reversal_confirmed:
-                    # Check market regime conditions if filter is enabled
-                    regime_suitable = True
-                    regime_reason = "No regime filter"
-                    
-                    if self.regime_filter is not None:
-                        # Check if we have enough data for regime analysis
-                        if (len(self.regime_filter.is_suitable) > 0 and
-                            len(self.regime_filter.regime_score) > 0):
-                            
-                            regime_suitable = bool(self.regime_filter.is_suitable[0])
-                            regime_info = self.regime_filter.get_regime_info()
-                            regime_reason = regime_info.get('reason', 'Unknown regime')
 
-                        else:
-                            # Not enough data for regime analysis, be conservative
-                            regime_suitable = False
-                            regime_reason = "Insufficient data for regime analysis"
-                    
-                    if regime_suitable:
+            # Long signal - Buy when price breaks below both bands with green candle
+            if (self.datas[0].open[0] < self.bb_lower[0] and
+                self.datas[0].open[0] < self.vwap_lower[0] and
+                self.datas[0].close[0] > self.datas[0].open[0]):  # Green candle confirmation
+                # Check market regime conditions if filter is enabled
+                regime_suitable = True
+                regime_reason = "No regime filter"
+
+                if self.regime_filter is not None:
+                    # Check if we have enough data for regime analysis
+                    if (len(self.regime_filter.is_suitable) > 0 and
+                        len(self.regime_filter.regime_score) > 0):
+
+                        regime_suitable = bool(self.regime_filter.is_suitable[0])
+                        regime_info = self.regime_filter.get_regime_info()
+                        regime_reason = regime_info.get('reason', 'Unknown regime')
+
+                    else:
+                        # Not enough data for regime analysis, be conservative
+                        regime_suitable = False
+                        regime_reason = "Insufficient data for regime analysis"
+
+                if regime_suitable:
                         # Calculate risk management levels
                         entry_price = self.dataclose[0]
                         stop_loss = self.risk_manager.calculate_atr_stop_loss(
@@ -192,19 +200,25 @@ class MeanReversionStrategy(bt.Strategy):
                             
                             # Store deposit before trade for outcome tracking
                             self.deposit_before_trade = account_value
-                            
+
+                            # Get risk metrics before using them
+                            risk_metrics = self.risk_manager.get_risk_metrics(
+                                entry_price, stop_loss, take_profit, 'long'
+                            )
+
                             # Execute market order immediately
                             self.order = self.buy(size=position_size, exectype=bt.Order.Market)
                             self.stop_price = stop_loss
                             self.take_profit_price = take_profit
-                            
+
+                            # Initialize trailing stop if enabled
+                            if self.trailing_stop_manager:
+                                self.trailing_stop_manager.initialize_position(
+                                    entry_price, stop_loss, take_profit, 'long'
+                                )
+
                             # Set position entry time immediately since market orders execute right away
                             self.order_entry_time = self.datas[0].datetime.datetime(0)
-                            
-                            # Get risk metrics for logging
-                            risk_metrics = self.risk_manager.get_risk_metrics(
-                                entry_price, stop_loss, take_profit, 'long'
-                            )
                             
                             # Create unique order ID
                             order_id = f"BUY_{self.datas[0].datetime.date(0).isoformat()}_{self.datas[0].datetime.time(0).isoformat().replace(':', '')}"
@@ -229,7 +243,7 @@ class MeanReversionStrategy(bt.Strategy):
                                 'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
                                 'account_risk_pct': risk_metrics['risk_percentage'],
                                 'deposit_before_trade': account_value,
-                                'reason': f'Break below BB/VWAP lower bands with reversal - {regime_reason}',
+                                'reason': f'Break below BB/VWAP lower bands with green candle - {regime_reason}',
                                 # Market regime information
                                 'regime_score': regime_info.get('score', 0),
                                 'regime_adx': regime_info.get('adx', 0),
@@ -248,39 +262,32 @@ class MeanReversionStrategy(bt.Strategy):
                             self.trade_log.append({
                                 'type': 'buy', 
                                 'price': entry_price, 
-                                'reason': 'Break below BB/VWAP lower'
+                                'reason': 'Break below BB/VWAP lower with green candle'
                             })
             
-            # Short signal - Sell when price breaks above both bands and shows reversal
-            elif (self.dataclose[0] > self.bb_upper[0] and 
-                  self.dataclose[0] > self.vwap_upper[0]):
-                
-                # Check for reversal confirmation if required
-                reversal_confirmed = True
-                if self.p.require_reversal:
-                    reversal_confirmed = (self.dataclose[-1] > self.bb_upper[-1] and 
-                                        self.dataclose[0] < self.dataclose[-1])
-                
-                if reversal_confirmed:
-                    # Check market regime conditions if filter is enabled
-                    regime_suitable = True
-                    regime_reason = "No regime filter"
-                    
-                    if self.regime_filter is not None:
-                        # Check if we have enough data for regime analysis
-                        if (len(self.regime_filter.is_suitable) > 0 and
-                            len(self.regime_filter.regime_score) > 0):
-                            
-                            regime_suitable = bool(self.regime_filter.is_suitable[0])
-                            regime_info = self.regime_filter.get_regime_info()
-                            regime_reason = regime_info.get('reason', 'Unknown regime')
+            # Short signal - Sell when price breaks above both bands with red candle
+            elif (self.datas[0].open[0] > self.bb_upper[0] and
+                  self.datas[0].open[0] > self.vwap_upper[0] and
+                  self.datas[0].close[0] < self.datas[0].open[0]):  # Red candle confirmation
+                # Check market regime conditions if filter is enabled
+                regime_suitable = True
+                regime_reason = "No regime filter"
 
-                        else:
-                            # Not enough data for regime analysis, be conservative
-                            regime_suitable = False
-                            regime_reason = "Insufficient data for regime analysis"
+                if self.regime_filter is not None:
+                    # Check if we have enough data for regime analysis
+                    if (len(self.regime_filter.is_suitable) > 0 and
+                        len(self.regime_filter.regime_score) > 0):
 
-                    if regime_suitable:
+                        regime_suitable = bool(self.regime_filter.is_suitable[0])
+                        regime_info = self.regime_filter.get_regime_info()
+                        regime_reason = regime_info.get('reason', 'Unknown regime')
+
+                    else:
+                        # Not enough data for regime analysis, be conservative
+                        regime_suitable = False
+                        regime_reason = "Insufficient data for regime analysis"
+
+                if regime_suitable:
                         # Calculate risk management levels
                         entry_price = self.dataclose[0]
                         stop_loss = self.risk_manager.calculate_atr_stop_loss(
@@ -304,19 +311,25 @@ class MeanReversionStrategy(bt.Strategy):
                             
                             # Store deposit before trade for outcome tracking
                             self.deposit_before_trade = account_value
-                            
+
+                            # Get risk metrics before using them
+                            risk_metrics = self.risk_manager.get_risk_metrics(
+                                entry_price, stop_loss, take_profit, 'short'
+                            )
+
                             # Execute market order immediately
                             self.order = self.sell(size=position_size, exectype=bt.Order.Market)
                             self.stop_price = stop_loss
                             self.take_profit_price = take_profit
-                            
+
+                            # Initialize trailing stop if enabled
+                            if self.trailing_stop_manager:
+                                self.trailing_stop_manager.initialize_position(
+                                    entry_price, stop_loss, take_profit, 'short'
+                                )
+
                             # Set position entry time immediately since market orders execute right away
                             self.order_entry_time = self.datas[0].datetime.datetime(0)
-                            
-                            # Get risk metrics for logging
-                            risk_metrics = self.risk_manager.get_risk_metrics(
-                                entry_price, stop_loss, take_profit, 'short'
-                            )
                             
                             # Create unique order ID
                             order_id = f"SELL_{self.datas[0].datetime.date(0).isoformat()}_{self.datas[0].datetime.time(0).isoformat().replace(':', '')}"
@@ -341,7 +354,7 @@ class MeanReversionStrategy(bt.Strategy):
                                 'risk_reward_ratio': risk_metrics['risk_reward_ratio'],
                                 'account_risk_pct': risk_metrics['risk_percentage'],
                                 'deposit_before_trade': account_value,
-                                'reason': f'Break above BB/VWAP upper bands with reversal - {regime_reason}',
+                                'reason': f'Break above BB/VWAP upper bands with red candle - {regime_reason}',
                                 # Market regime information
                                 'regime_score': regime_info.get('score', 0),
                                 'regime_adx': regime_info.get('adx', 0),
@@ -360,22 +373,34 @@ class MeanReversionStrategy(bt.Strategy):
                             self.trade_log.append({
                                 'type': 'sell', 
                                 'price': entry_price, 
-                                'reason': 'Break above BB/VWAP upper'
+                                'reason': 'Break above BB/VWAP upper with red candle'
                             })
         else:
+            # Update trailing stop if enabled
+            if self.trailing_stop_manager:
+                current_price = self.dataclose[0]
+                new_stop, was_updated = self.trailing_stop_manager.update(current_price)
+                if was_updated:
+                    self.stop_price = new_stop
+                    logger.debug(f"Trailing stop updated to {new_stop:.4f}")
+
             # Position management - Exit on stop loss or take profit
             if self.position.size > 0:  # Long position
-                if self.dataclose[0] <= self.stop_price:
+                # Check if low touched stop loss
+                if self.datas[0].low[0] <= self.stop_price:
                     self.close()
                     self._record_trade_outcome('stop_loss', self.stop_price)  # Use exact SL price
-                elif self.dataclose[0] >= self.take_profit_price:
+                # Check if high touched take profit
+                elif self.datas[0].high[0] >= self.take_profit_price:
                     self.close()
                     self._record_trade_outcome('take_profit', self.take_profit_price)  # Use exact TP price
             elif self.position.size < 0:  # Short position
-                if self.dataclose[0] >= self.stop_price:
+                # Check if high touched stop loss
+                if self.datas[0].high[0] >= self.stop_price:
                     self.close()
                     self._record_trade_outcome('stop_loss', self.stop_price)  # Use exact SL price
-                elif self.dataclose[0] <= self.take_profit_price:
+                # Check if low touched take profit
+                elif self.datas[0].low[0] <= self.take_profit_price:
                     self.close()
                     self._record_trade_outcome('take_profit', self.take_profit_price)  # Use exact TP price
 
@@ -432,6 +457,9 @@ class MeanReversionStrategy(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
+            # Reset trailing stop if enabled
+            if self.trailing_stop_manager:
+                self.trailing_stop_manager.reset()
             # Calculate P&L using exact exit prices instead of market prices
             calculated_pnl = trade.pnl  # Default fallback
             # If we have pending outcome with exact exit price, recalculate P&L
