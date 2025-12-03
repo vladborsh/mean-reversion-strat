@@ -20,6 +20,10 @@ class MeanReversionStrategy(bt.Strategy):
     base_params['stop_loss_atr_multiplier'] = risk_config['stop_loss_atr_multiplier']
     base_params['risk_reward_ratio'] = risk_config['risk_reward_ratio']
     
+    # Add trailing stop configuration
+    trailing_stop_config = Config.get_trailing_stop_config()
+    base_params['trailing_stop_enabled'] = trailing_stop_config['enabled']
+    
     # Removed verbose parameter - using logger instead
     
     # Convert to backtrader params format
@@ -91,8 +95,9 @@ class MeanReversionStrategy(bt.Strategy):
         self.equity_dates = []
 
         # Initialize trailing stop manager if enabled
-        trailing_stop_config = Config.get_trailing_stop_config()
-        if trailing_stop_config and trailing_stop_config.get('enabled', False):
+        trailing_stop_enabled = getattr(self.p, 'trailing_stop_enabled', False)
+        if trailing_stop_enabled:
+            trailing_stop_config = Config.get_trailing_stop_config()
             self.trailing_stop_manager = TrailingStopManager(
                 activation_pct=trailing_stop_config.get('activation_pct', 50.0),
                 breakeven_plus_pct=trailing_stop_config.get('breakeven_plus_pct', 20.0)
@@ -150,8 +155,9 @@ class MeanReversionStrategy(bt.Strategy):
                 return  # Skip trading outside of allowed hours
 
             # Long signal - Buy when price breaks below both bands with green candle
-            if (self.datas[0].close[0] < self.bb_lower[0] and
-                self.datas[0].close[0] < self.vwap_lower[0]):  # Green candle confirmation
+            if (self.datas[0].open[0] < self.bb_lower[0] and
+                self.datas[0].open[0] < self.vwap_lower[0] and
+                self.datas[0].close[0] > self.datas[0].open[0]):  # Green candle confirmation
                 # Check market regime conditions if filter is enabled
                 regime_suitable = True
                 regime_reason = "No regime filter"
@@ -260,8 +266,9 @@ class MeanReversionStrategy(bt.Strategy):
                             })
             
             # Short signal - Sell when price breaks above both bands with red candle
-            elif (self.datas[0].close[0] > self.bb_upper[0] and
-                  self.datas[0].close[0] > self.vwap_upper[0]):  # Red candle confirmation
+            elif (self.datas[0].open[0] > self.bb_upper[0] and
+                  self.datas[0].open[0] > self.vwap_upper[0] and
+                  self.datas[0].close[0] < self.datas[0].open[0]):  # Red candle confirmation
                 # Check market regime conditions if filter is enabled
                 regime_suitable = True
                 regime_reason = "No regime filter"

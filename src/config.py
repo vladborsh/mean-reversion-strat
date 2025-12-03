@@ -47,7 +47,7 @@ class Config:
     # ===========================================
 
     TRAILING_STOPS = {
-        'enabled': True,                       # Enable trailing stop functionality
+        'enabled': False,                      # Enable trailing stop functionality
         'activation_pct': 50.0,                # Activate after reaching 50% of target
         'breakeven_plus_pct': 20.0             # Move stop to breakeven + 20% of target distance
     }
