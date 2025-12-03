@@ -58,7 +58,8 @@ class Config:
 
     ENTRY_CONDITIONS = {
         'min_volume_threshold': 0,            # Minimum volume for entry (0 = no filter)
-        'max_positions': 1                    # Max positions per asset
+        'max_positions': 1,                   # Max positions per asset
+        'require_reversal': False             # Require reversal confirmation before entry (default: False)
     }
 
     # ===========================================
@@ -155,6 +156,7 @@ class Config:
             # Entry conditions
             'min_volume': cls.ENTRY_CONDITIONS['min_volume_threshold'],
             'max_positions': cls.ENTRY_CONDITIONS['max_positions'],
+            'require_reversal': cls.ENTRY_CONDITIONS['require_reversal'],
 
             # Market regime
             'regime_enabled': cls.MARKET_REGIME['enabled'],

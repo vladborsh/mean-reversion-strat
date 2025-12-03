@@ -438,7 +438,8 @@ class PerformanceAnalyzer:
             'risk_per_position_pct': risk_config['risk_per_position_pct'],
             'stop_loss_atr_multiplier': risk_config['stop_loss_atr_multiplier'],
             'risk_reward_ratio': risk_config['risk_reward_ratio'],
-            'regime_min_score': strategy_config['regime_min_score']
+            'require_reversal': strategy_config.get('require_reversal', False),
+            'regime_min_score': strategy_config.get('regime_min_score', 60)
         }
 
     def analyze_all_symbols(self, period: str, symbols_filter: Optional[List[str]] = None) -> Dict[str, Any]:

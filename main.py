@@ -112,7 +112,8 @@ def create_custom_config_class(config_dict: Dict[str, Any]):
                 'vwap_std': vwap_config['std_dev'],
                 'vwap_anchor': 'day',  # Default anchor
                 'atr_period': atr_config['period'],
-                'regime_min_score': strategy_config['regime_min_score'],
+                'require_reversal': strategy_config.get('require_reversal', False),
+                'regime_min_score': strategy_config.get('regime_min_score', 60),
                 'regime_enabled': True
             }
         

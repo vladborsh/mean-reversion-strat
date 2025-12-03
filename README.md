@@ -24,6 +24,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
 - **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
+- **[Require Reversal Parameter](docs/REQUIRE_REVERSAL_PARAMETER.md)** - New strategy behavior parameter documentation
 - **[Live Performance Verifier](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Historical performance analysis tool
 - **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
 - **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Strategy performance evolution and improvements
@@ -445,20 +446,23 @@ See [Hyperparameter Optimization](docs/HYPERPARAMETER_OPTIMIZATION.md) for detai
 
 ```python
 params = {
-    'bb_window': 20,      # Bollinger Bands window
-    'bb_std': 2,          # Bollinger Bands standard deviation
-    'vwap_window': 20,    # VWAP window
-    'vwap_std': 2,        # VWAP standard deviation
-    'stop_loss': 0.02,    # Stop loss percentage (2%)
-    'take_profit': 0.04   # Take profit percentage (4%)
+    'bb_window': 20,           # Bollinger Bands window
+    'bb_std': 2,               # Bollinger Bands standard deviation
+    'vwap_window': 20,         # VWAP window
+    'vwap_std': 2,             # VWAP standard deviation
+    'require_reversal': False, # Require reversal confirmation (default: False)
+    'regime_min_score': 60,    # Minimum market regime score (default: 60)
+    'stop_loss': 0.02,         # Stop loss percentage (2%)
+    'take_profit': 0.04        # Take profit percentage (4%)
 }
 ```
 
 ## Trading Logic
 
-- **Buy Signal**: Price breaks below both Bollinger and VWAP lower bands, then reverses
-- **Sell Signal**: Price breaks above both Bollinger and VWAP upper bands, then reverses
-- **Risk Management**: Configurable stop loss and take profit levels
+- **Buy Signal**: Price breaks below both Bollinger and VWAP lower bands, with optional reversal confirmation (controlled by `require_reversal` parameter)
+- **Sell Signal**: Price breaks above both Bollinger and VWAP upper bands, with optional reversal confirmation (controlled by `require_reversal` parameter)
+- **Risk Management**: Configurable stop loss and take profit levels with ATR-based position sizing
+- **Market Regime**: Optional market regime filtering using `regime_min_score` parameter
 
 ## Transport Layer
 
