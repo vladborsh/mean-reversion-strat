@@ -365,17 +365,21 @@ class MeanReversionStrategy(bt.Strategy):
         else:
             # Position management - Exit on stop loss or take profit
             if self.position.size > 0:  # Long position
-                if self.dataclose[0] <= self.stop_price:
+                # Check if low touched stop loss
+                if self.datas[0].low[0] <= self.stop_price:
                     self.close()
                     self._record_trade_outcome('stop_loss', self.stop_price)  # Use exact SL price
-                elif self.dataclose[0] >= self.take_profit_price:
+                # Check if high touched take profit
+                elif self.datas[0].high[0] >= self.take_profit_price:
                     self.close()
                     self._record_trade_outcome('take_profit', self.take_profit_price)  # Use exact TP price
             elif self.position.size < 0:  # Short position
-                if self.dataclose[0] >= self.stop_price:
+                # Check if high touched stop loss
+                if self.datas[0].high[0] >= self.stop_price:
                     self.close()
                     self._record_trade_outcome('stop_loss', self.stop_price)  # Use exact SL price
-                elif self.dataclose[0] <= self.take_profit_price:
+                # Check if low touched take profit
+                elif self.datas[0].low[0] <= self.take_profit_price:
                     self.close()
                     self._record_trade_outcome('take_profit', self.take_profit_price)  # Use exact TP price
 
