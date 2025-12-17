@@ -43,7 +43,7 @@ class StrategyConfig:
     
     # Market Regime Detection Parameters
     MARKET_REGIME = {
-        'enabled': True,                        # Enable/disable regime filtering
+        'enabled': False,                       # Enable/disable regime filtering
         'adx_period': 14,                      # ADX calculation period
         'volatility_period': 14,               # ATR period for volatility calculation
         'volatility_lookback': 100,            # Lookback period for volatility percentile

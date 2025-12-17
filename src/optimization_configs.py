@@ -118,23 +118,23 @@ class OptimizationConfigs:
         return {
             # Technical indicators - moderate settings
             'bb_window': [20, 25, 30],
-            'bb_std': [2.0, 2.5, 3.0],
-            'vwap_window': [20, 25, 30],
+            'bb_std': [2.0, 2.5],
+            'vwap_window': [25, 30],
             'vwap_std': [2.0, 2.5],
             
             # Risk management - critical for drawdown control
-            'risk_per_position_pct': [0.5, 0.75, 1.0, 1.25],  # Lower risk values to reduce drawdown
-            'stop_loss_atr_multiplier': [0.8, 1.0, 1.2, 1.5],  # Tighter stops to minimize drawdown
-            'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5],  # Balanced risk/reward
+            'risk_per_position_pct': [0.5],  # Lower risk values to reduce drawdown
+            'stop_loss_atr_multiplier': [1.0, 1.2, 1.5],  # Tighter stops to minimize drawdown
+            'risk_reward_ratio': [2.0, 2.5],  # Balanced risk/reward
             
             # Strategy behavior for smoother equity curve
-            'require_reversal': [True],  # Require confirmation to reduce false signals
+            # 'require_reversal': [True],  # Require confirmation to reduce false signals
             
             # Market regime filtering to avoid unfavorable conditions
-            'regime_min_score': [60, 70, 80],  # Higher filtering to avoid drawdowns
+            # 'regime_min_score': [60, 70, 80],  # Higher filtering to avoid drawdowns
             
             # ATR period
-            'atr_period': [10, 14, 20],
+            'atr_period': [14, 20],
         }
     
 

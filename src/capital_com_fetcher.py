@@ -63,9 +63,7 @@ class CapitalComDataFetcher:
         
         # Forex pairs that need special mapping (Capital.com epic format)
         # Only include pairs that actually need transformation
-        self.forex_mapping = {
-            'USDCHF': 'CHFUSD',  # Capital.com uses inverted pair
-        }
+        self.forex_mapping = {}
         
         # Common indices mapping
         self.indices_mapping = {

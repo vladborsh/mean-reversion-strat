@@ -47,11 +47,7 @@ class LeveragedBroker(bt.brokers.BackBroker):
         price = order.price or order.data.close[0]
         position_value = size * price
         required_margin = position_value
-        
-        if self.verbose:
-            print(f"LEVERAGED ORDER: Size={size:,}, Price={price:.4f}, Position Value=${position_value:,.2f}")
-            print(f"Required Margin: ${required_margin:,.2f}, Actual Cash: ${self.get_actual_cash():,.2f}, Leverage: 1:{int(self.leverage)}")
-        
+
         # For leveraged trading, bypass the cash check since we have virtual cash set high enough
         return super().submit(order, check=False, **kwargs)
 
@@ -109,9 +105,7 @@ def run_backtest(data, strategy_class, params, leverage=100.0, verbose=True):
     
     # Configure broker for leveraged trading (forex/CFD style)
     if verbose:
-        print(f"Configured broker with 1:{int(leverage)} leverage")
         print(f"Actual account balance: ${actual_cash:,.0f}")
-        print(f"Virtual buying power: ${actual_cash * leverage:,.0f}")
     
     # Add analyzers (no portfolio observer since it doesn't work reliably)
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
@@ -171,17 +165,12 @@ def run_backtest(data, strategy_class, params, leverage=100.0, verbose=True):
         if order_log and verbose:
             print(f"\n=== ORDER LOG SUMMARY ===")
             print(f"Total orders found: {len(order_log)}")
-            orders_with_outcomes = len([o for o in order_log if 'trade_outcome' in o])
-            print(f"Orders with outcomes: {orders_with_outcomes}/{len(order_log)}")
             for i, order in enumerate(order_log, 1):
                 outcome_text = ""
                 if 'trade_outcome' in order:
                     outcome = order['trade_outcome']
                     outcome_text = f" -> {outcome['type'].upper()}: {outcome.get('pnl', 0):+.4f}"
                 print(f"{i}. {order['date']} {order['time']} - {order['type']} @ {order['entry_price']:.4f}{outcome_text}")
-                print(f"   SL: {order['stop_loss']:.4f}, TP: {order['take_profit']:.4f}")
-                print(f"   Reason: {order['reason']}")
-                print()
         elif not order_log and verbose:
             print("No orders found during backtest period.")
         
