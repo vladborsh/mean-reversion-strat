@@ -120,6 +120,9 @@ class BatchResultsAnalyzer:
                 # Use custom parser to handle dictionary in parameters column
                 df = self._parse_csv_with_dict_column(csv_file)
                 
+                # Add 1-based run_id (row number from original CSV)
+                df['run_id'] = range(1, len(df) + 1)
+                
                 if len(df) == 0:
                     print(f"Warning: Empty file {csv_file.name}")
                     continue
@@ -301,7 +304,8 @@ class BatchResultsAnalyzer:
                 },
                 'parameters': params,
                 'source_file': best_result['source_file'],
-                'selected_by': objective
+                'selected_by': objective,
+                'run_id': int(best_result['run_id'])  # Get run_id from the CSV row
             }
             
             perf = best_configs[asset_key]['performance']
@@ -357,7 +361,8 @@ class BatchResultsAnalyzer:
                 'PERFORMANCE_METRICS': config['performance'],
                 'METADATA': {
                     'source_file': config['source_file'],
-                    'generated_at': datetime.now().isoformat()
+                    'generated_at': datetime.now().isoformat(),
+                    'run_id': config['run_id']  # Add run_id to METADATA
                 }
             }
             
@@ -431,6 +436,7 @@ class BatchResultsAnalyzer:
         csv_data = []
         for asset_key, config in strategy_configs.items():
             row = {
+                'run_id': config['METADATA']['run_id'],  # Add run_id as first column
                 'asset': asset_key,
                 'symbol': config['ASSET_INFO']['symbol'],
                 'timeframe': config['ASSET_INFO']['timeframe'],

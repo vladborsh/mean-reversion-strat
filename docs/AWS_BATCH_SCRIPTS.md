@@ -2,6 +2,11 @@
 
 This directory contains bash scripts for managing AWS Batch jobs for the mean reversion strategy optimization.
 
+> **Related Documentation:**
+> - [AWS Batch Setup](AWS_BATCH_SETUP.md) - Initial AWS Batch configuration
+> - [Post-Processing & Results Analysis](POST_PROCESSING.md) - Analyzing optimization results after job completion
+> - [Hyperparameter Optimization](HYPERPARAMETER_OPTIMIZATION.md) - Optimization methods
+
 **Note**: Run all commands from the project root directory (`mean-reversion-strat/`).
 
 ## Scripts Overview

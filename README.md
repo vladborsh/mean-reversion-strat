@@ -26,6 +26,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
 - **[Live Performance Verifier](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Historical performance analysis tool
 - **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
+- **[Post-Processing & Results Analysis](docs/POST_PROCESSING.md)** - Analyzing optimization results and generating PNL charts
 - **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Strategy performance evolution and improvements
 - **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
 - **[Caching System](docs/CACHING.md)** - Data caching implementation
