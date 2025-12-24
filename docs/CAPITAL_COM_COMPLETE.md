@@ -147,7 +147,7 @@ The system translates between common symbol formats and Capital.com epics:
 
 **Indices**:
 - **US**: US500 (S&P 500), US30 (Dow), USTECH100 (NASDAQ)
-- **EU**: UK100 (FTSE), GER40 (DAX), FRA40 (CAC 40)
+- **EU**: UK100 (FTSE), DE40 (DAX), FRA40 (CAC 40)
 - **Asia**: JPN225 (Nikkei)
 
 ### Market Discovery

@@ -94,7 +94,7 @@ def fetch_indices_data_examples():
         
         # Example 2: Multiple indices 4-hour data
         print("\n2. Global Indices 4-hour Data (6 months)")
-        indices = ['US500', 'UK100', 'GER40']
+        indices = ['US500', 'UK100', 'DE40']
         for index in indices:
             data = fetcher.fetch_historical_data(index, 'indices', '4h', 0.5)
             if data is not None:

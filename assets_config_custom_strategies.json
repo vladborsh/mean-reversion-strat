@@ -1,0 +1,28 @@
+{
+  "assets": [
+    {
+      "symbol": "DE40",
+      "fetch_symbol": "DE40",
+      "timeframe": "5m",
+      "strategy": "session_sweep",
+      "description": "DAX Index - Asia session sweep strategy"
+    }
+  ],
+  "strategies": {
+    "session_sweep": {
+      "detector_class": "AsiaSessionSweepDetector",
+      "detector_module": "src.bot.custom_scripts.asia_session_sweep_detector",
+      "description": "Session high/low breakout with reversal candle confirmation",
+      "parameters": {
+        "session_start": "03:00",
+        "session_end": "07:00",
+        "signal_window_start": "08:30",
+        "signal_window_end": "09:30"
+      },
+      "signal_conditions": {
+        "long": "Price breaks above session high AND last candle is bearish (close < open)",
+        "short": "Price breaks below session low AND last candle is bullish (close > open)"
+      }
+    }
+  }
+}

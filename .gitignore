@@ -175,6 +175,8 @@ cython_debug/
 *.xlsx
 *.xls
 *.json
+# Exception: Custom strategy config should be tracked
+!assets_config_custom_strategies.json
 data/
 datasets/
 *.h5
