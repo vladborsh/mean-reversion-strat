@@ -284,8 +284,15 @@ class CustomStrategyScheduler:
             if signal_type in ['long', 'short']:
                 logger.info(f"    🚨 SIGNAL: {signal_type.upper()} at {current_price:.4f}")
                 logger.info(f"       Reason: {signal_result.get('reason', 'N/A')}")
-                logger.info(f"       Session High: {signal_result.get('session_high', 'N/A'):.4f}")
-                logger.info(f"       Session Low: {signal_result.get('session_low', 'N/A'):.4f}")
+                
+                # Format session high/low only if numeric
+                session_high = signal_result.get('session_high', 'N/A')
+                session_low = signal_result.get('session_low', 'N/A')
+                session_high_str = f"{session_high:.4f}" if isinstance(session_high, (int, float)) else session_high
+                session_low_str = f"{session_low:.4f}" if isinstance(session_low, (int, float)) else session_low
+                
+                logger.info(f"       Session High: {session_high_str}")
+                logger.info(f"       Session Low: {session_low_str}")
                 
                 # Send Telegram notification if enabled
                 if self.enable_telegram and self.telegram_bot:

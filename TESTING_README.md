@@ -54,6 +54,34 @@ python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD
 
 ---
 
+### 3. VWAP Mean Reversion Strategy (BTC)
+**File:** `tests/test_btc_vwap.py`
+
+Tests the VWAP mean reversion detector on BTC using real historical data from Capital.com.
+
+#### Usage:
+```bash
+# Basic test for date range
+python tests/test_btc_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol BTC
+
+# Test with custom config
+python tests/test_btc_vwap.py --start 2025-12-01 --end 2025-12-24 --symbol BTC --config assets_config_custom_strategies.json
+
+# Export signals to CSV
+python tests/test_btc_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol BTC --export btc_signals.csv
+
+# Save report to file
+python tests/test_btc_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol BTC --report btc_report.txt
+```
+
+#### Strategy Details:
+- **Indicator**: VWAP with 1.0 standard deviation bands (daily reset)
+- **Signal Window**: 14:00-16:00 UTC
+- **Long Signal**: Price < VWAP lower band + bullish reversal candle + previous candle was bearish
+- **Short Signal**: Price > VWAP upper band + bearish reversal candle + previous candle was bullish
+
+---
+
 ## Command-Line Arguments
 
 ### Common Arguments (Both Scripts)
@@ -62,10 +90,10 @@ python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD
 |----------|----------|---------|-------------|
 | `--start` | Yes | - | Start date in YYYY-MM-DD format |
 | `--end` | Yes | - | End date in YYYY-MM-DD format |
-| `--symbol` | No | DE40/GOLD | Asset symbol to test |
+| `--symbol` | No | DE40/GOLD/BTC | Asset symbol to test |
 | `--config` | No | assets_config_custom_strategies.json | Path to configuration file |
 
-### GOLD VWAP Additional Arguments
+### VWAP Additional Arguments (GOLD & BTC)
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -109,6 +137,12 @@ Ensure your `assets_config_custom_strategies.json` includes the assets you want 
       "fetch_symbol": "GOLD",
       "timeframe": "5m",
       "strategy": "vwap"
+    },
+    {
+      "symbol": "BTC",
+      "fetch_symbol": "BTC",
+      "timeframe": "5m",
+      "strategy": "vwap_btc"
     }
   ],
   "strategies": {
@@ -125,6 +159,14 @@ Ensure your `assets_config_custom_strategies.json` includes the assets you want 
         "num_std": 1.0,
         "signal_window_start": "13:00",
         "signal_window_end": "15:00",
+        "anchor_period": "day"
+      }
+    },
+    "vwap_btc": {
+      "parameters": {
+        "num_std": 1.0,
+        "signal_window_start": "14:00",
+        "signal_window_end": "16:00",
         "anchor_period": "day"
       }
     }
@@ -146,7 +188,7 @@ Both scripts output a detailed report to the console including:
   - Strategy-specific indicators (session high/low or VWAP bands)
   - Signal reason
 
-### CSV Export (GOLD VWAP only)
+### CSV Export (VWAP strategies)
 Export signals to CSV for further analysis with columns:
 - timestamp
 - signal_type (long/short)
@@ -156,7 +198,7 @@ Export signals to CSV for further analysis with columns:
 - vwap, vwap_upper, vwap_lower
 - reason
 
-### Text Report (GOLD VWAP only)
+### Text Report (VWAP strategies)
 Save the full console report to a text file for documentation.
 
 ---
@@ -170,21 +212,33 @@ python tests/test_asia_session_sweep.py --start 2025-12-18 --end 2025-12-24 --sy
 
 # Test GOLD for past week with export
 python tests/test_gold_vwap.py --start 2025-12-18 --end 2025-12-24 --symbol GOLD --export results/gold_dec_week.csv
+
+# Test BTC for past week with export
+python tests/test_btc_vwap.py --start 2025-12-18 --end 2025-12-24 --symbol BTC --export results/btc_dec_week.csv
 ```
 
 ### Test Full Month
 ```bash
-# Test entire December
+# Test GOLD - entire December
 python tests/test_gold_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol GOLD --report results/gold_december.txt
+
+# Test BTC - entire December
+python tests/test_btc_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol BTC --report results/btc_december.txt
 ```
 
 ### Compare Different Periods
 ```bash
-# Test November
+# Test GOLD - November
 python tests/test_gold_vwap.py --start 2025-11-01 --end 2025-11-30 --symbol GOLD --export results/gold_november.csv
 
-# Test December
+# Test GOLD - December
 python tests/test_gold_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol GOLD --export results/gold_december.csv
+
+# Test BTC - November
+python tests/test_btc_vwap.py --start 2025-11-01 --end 2025-11-30 --symbol BTC --export results/btc_november.csv
+
+# Test BTC - December
+python tests/test_btc_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol BTC --export results/btc_december.csv
 
 # Compare CSV files in spreadsheet or Python
 ```

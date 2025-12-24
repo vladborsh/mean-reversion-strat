@@ -41,6 +41,13 @@ src/bot/custom_scripts/
       "timeframe": "5m",
       "strategy": "vwap",
       "description": "Gold - VWAP mean reversion"
+    },
+    {
+      "symbol": "BTC",
+      "fetch_symbol": "BTC",
+      "timeframe": "5m",
+      "strategy": "vwap_btc",
+      "description": "Bitcoin - VWAP mean reversion"
     }
   ],
   "strategies": {
@@ -61,6 +68,16 @@ src/bot/custom_scripts/
         "num_std": 1.0,
         "signal_window_start": "13:00",
         "signal_window_end": "15:00",
+        "anchor_period": "day"
+      }
+    },
+    "vwap_btc": {
+      "detector_class": "VWAPDetector",
+      "detector_module": "src.bot.custom_scripts.vwap_detector",
+      "parameters": {
+        "num_std": 1.0,
+        "signal_window_start": "14:00",
+        "signal_window_end": "16:00",
         "anchor_period": "day"
       }
     }
@@ -105,6 +122,14 @@ python tests/test_gold_vwap.py \
   --symbol GOLD \
   --export gold_signals.csv \
   --report gold_report.txt
+
+# Run BTC VWAP backtest
+python tests/test_btc_vwap.py \
+  --start 2025-12-01 \
+  --end 2025-12-24 \
+  --symbol BTC \
+  --export btc_signals.csv \
+  --report btc_report.txt
 ```
 
 ## Available Strategies
@@ -171,6 +196,7 @@ The VWAP mean reversion strategy captures price extremes with reversal confirmat
 #### Signal Output
 
 ```python
+# GOLD signal (13:00-15:00 UTC)
 {
     'signal_type': 'long'|'short'|'no_signal'|'error',
     'direction': 'BUY'|'SELL'|'HOLD',
@@ -183,16 +209,30 @@ The VWAP mean reversion strategy captures price extremes with reversal confirmat
     'timestamp': datetime(2025, 12, 24, 14, 0, 0),
     'strategy': 'vwap'
 }
+
+# BTC signal (14:00-16:00 UTC)
+{
+    'signal_type': 'short',
+    'direction': 'SELL',
+    'symbol': 'BTC',
+    'current_price': 96500.00,
+    'vwap': 96000.00,
+    'vwap_upper': 97000.00,
+    'vwap_lower': 95000.00,
+    'reason': 'Price above VWAP upper, bearish reversal candle',
+    'timestamp': datetime(2025, 12, 24, 15, 0, 0),
+    'strategy': 'vwap_btc'
+}
 ```
 
 #### Configurable Parameters
 
-| Parameter | Description | Example |
-|-----------|-------------|---------||
-| `num_std` | Number of standard deviations for bands | 1.0 |
-| `signal_window_start` | Signal generation start time (HH:MM UTC) | "13:00" |
-| `signal_window_end` | Signal generation end time (HH:MM UTC) | "15:00" |
-| `anchor_period` | VWAP reset period (day/week/month/year) | "day" |
+| Parameter | Description | Example | Used By |
+|-----------|-------------|---------|---------|
+| `num_std` | Number of standard deviations for bands | 1.0 | GOLD, BTC |
+| `signal_window_start` | Signal generation start time (HH:MM UTC) | "13:00" (GOLD), "14:00" (BTC) | GOLD, BTC |
+| `signal_window_end` | Signal generation end time (HH:MM UTC) | "15:00" (GOLD), "16:00" (BTC) | GOLD, BTC |
+| `anchor_period` | VWAP reset period (day/week/month/year) | "day" | GOLD, BTC |
 
 #### Key Features
 
