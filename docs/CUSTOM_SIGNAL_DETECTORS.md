@@ -5,10 +5,10 @@ This directory contains custom signal detection strategies that operate independ
 ## Overview
 
 The custom scripts system provides:
-- **Configurable Detectors**: Session-based strategies with flexible time ranges
+- **Configurable Detectors**: Session-based and indicator-based strategies with flexible parameters
 - **Config-Driven Setup**: Asset-strategy relationships defined in JSON
 - **Easy Integration**: Factory functions and config loaders for quick setup
-- **Testing Framework**: Comprehensive backtesting tools
+- **Testing Framework**: Comprehensive backtesting tools with CLI support
 
 ## Directory Structure
 
@@ -16,6 +16,7 @@ The custom scripts system provides:
 src/bot/custom_scripts/
 ├── __init__.py                      # Module exports
 ├── asia_session_sweep_detector.py  # Session sweep detector implementation
+├── vwap_detector.py                 # VWAP mean reversion detector implementation
 ├── config_loader.py                 # Configuration loading utilities
 └── README.md                        # This file
 ```
@@ -33,6 +34,13 @@ src/bot/custom_scripts/
       "timeframe": "5m",
       "strategy": "session_sweep",
       "description": "DAX Index - Asia session sweep"
+    },
+    {
+      "symbol": "GOLD",
+      "fetch_symbol": "GOLD",
+      "timeframe": "5m",
+      "strategy": "vwap",
+      "description": "Gold - VWAP mean reversion"
     }
   ],
   "strategies": {
@@ -44,6 +52,16 @@ src/bot/custom_scripts/
         "session_end": "07:00",
         "signal_window_start": "08:30",
         "signal_window_end": "09:30"
+      }
+    },
+    "vwap": {
+      "detector_class": "VWAPDetector",
+      "detector_module": "src.bot.custom_scripts.vwap_detector",
+      "parameters": {
+        "num_std": 1.0,
+        "signal_window_start": "13:00",
+        "signal_window_end": "15:00",
+        "anchor_period": "day"
       }
     }
   }
@@ -73,27 +91,37 @@ export CAPITAL_COM_API_KEY="your_key"
 export CAPITAL_COM_PASSWORD="your_password"
 export CAPITAL_COM_IDENTIFIER="your_email"
 
-# Run backtest
+# Run Asia Session Sweep backtest
 python tests/test_asia_session_sweep.py \
   --start 2024-12-01 \
   --end 2024-12-20 \
   --config assets_config_custom_strategies.json \
   --symbol DE40
+
+# Run GOLD VWAP backtest
+python tests/test_gold_vwap.py \
+  --start 2025-12-01 \
+  --end 2025-12-24 \
+  --symbol GOLD \
+  --export gold_signals.csv \
+  --report gold_report.txt
 ```
 
-## Session Sweep Strategy
+## Available Strategies
 
-### Concept
+### 1. Session Sweep Strategy
+
+#### Concept
 
 The session sweep strategy identifies liquidity grabs during session transitions:
 
 1. **Session Range**: Track high/low during a specific time period (e.g., Asia session 3-7 AM UTC)
 2. **Signal Window**: Generate signals during a subsequent period (e.g., European open 8:30-9:30 AM UTC)
 3. **Entry Conditions**:
-   - **Long**: Price breaks above session high + bearish reversal candle (close < open)
-   - **Short**: Price breaks below session low + bullish reversal candle (close > open)
+   - **Long**: Price breaks below session low + bullish reversal candle (close > open) + previous candle was bearish
+   - **Short**: Price breaks above session high + bearish reversal candle (close < open) + previous candle was bullish
 
-### Signal Output
+#### Signal Output
 
 Signals are detection-only (no risk calculations):
 
@@ -111,7 +139,7 @@ Signals are detection-only (no risk calculations):
 }
 ```
 
-### Configurable Parameters
+#### Configurable Parameters
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
@@ -119,6 +147,60 @@ Signals are detection-only (no risk calculations):
 | `session_end` | Session tracking end time (HH:MM UTC) | "07:00" |
 | `signal_window_start` | Signal generation start time (HH:MM UTC) | "08:30" |
 | `signal_window_end` | Signal generation end time (HH:MM UTC) | "09:30" |
+
+### 2. VWAP Mean Reversion Strategy
+
+#### Concept
+
+The VWAP mean reversion strategy captures price extremes with reversal confirmation:
+
+1. **VWAP Calculation**: Calculate VWAP with standard deviation bands (daily reset)
+2. **Signal Window**: Generate signals during active trading hours (e.g., 13:00-15:00 UTC)
+3. **Entry Conditions**:
+   - **Long**: 
+     - Price < VWAP lower band
+     - Last candle is bullish (close > open)
+     - Previous candle was bearish
+     - Lowest low of last 3 candles is the lowest in last 3 hours
+   - **Short**: 
+     - Price > VWAP upper band
+     - Last candle is bearish (close < open)
+     - Previous candle was bullish
+     - Highest high of last 3 candles is the highest in last 3 hours
+
+#### Signal Output
+
+```python
+{
+    'signal_type': 'long'|'short'|'no_signal'|'error',
+    'direction': 'BUY'|'SELL'|'HOLD',
+    'symbol': 'GOLD',
+    'current_price': 2650.50,
+    'vwap': 2645.00,
+    'vwap_upper': 2655.00,
+    'vwap_lower': 2635.00,
+    'reason': 'Price below VWAP lower, bullish reversal candle',
+    'timestamp': datetime(2025, 12, 24, 14, 0, 0),
+    'strategy': 'vwap'
+}
+```
+
+#### Configurable Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------||
+| `num_std` | Number of standard deviations for bands | 1.0 |
+| `signal_window_start` | Signal generation start time (HH:MM UTC) | "13:00" |
+| `signal_window_end` | Signal generation end time (HH:MM UTC) | "15:00" |
+| `anchor_period` | VWAP reset period (day/week/month/year) | "day" |
+
+#### Key Features
+
+- **Daily Reset**: VWAP recalculates from start of each trading day
+- **Forex Compatible**: Works with or without volume data
+- **Price Extremes**: Validates 3-hour highs/lows for better signal quality
+- **Reversal Confirmation**: Requires candle pattern confirmation
+- **Minimum Data**: Needs 36 candles (3 hours) for extreme validation
 
 ## Configuration System
 
@@ -224,20 +306,39 @@ detector = loader.create_detector('DE40')
 
 ### Test Script Usage
 
+#### Asia Session Sweep
+
 ```bash
 python tests/test_asia_session_sweep.py \
   --start 2024-12-01 \
   --end 2024-12-20 \
   --config assets_config_custom_strategies.json \
-  --symbol DE40 \
-  --output-dir ./test_results
+  --symbol DE40
+```
+
+#### GOLD VWAP
+
+```bash
+python tests/test_gold_vwap.py \
+  --start 2025-12-01 \
+  --end 2025-12-24 \
+  --symbol GOLD \
+  --export results/gold_signals.csv \
+  --report results/gold_report.txt
+```
+
+#### Interactive Test Runner
+
+```bash
+./run_strategy_tests.sh
+# Follow the prompts to select strategy and date range
 ```
 
 ### Test Output
 
 1. **Console Report**: Summary statistics and signal details
-2. **Text Report**: Detailed report saved to `test_results/asia_sweep_report_TIMESTAMP.txt`
-3. **CSV Export**: All signals in `test_results/asia_sweep_signals_TIMESTAMP.csv`
+2. **Text Report**: Detailed report (VWAP only with `--report` flag)
+3. **CSV Export**: All trade signals (VWAP only with `--export` flag)
 
 ### Report Sections
 
@@ -249,10 +350,23 @@ python tests/test_asia_session_sweep.py \
 
 ## Examples
 
-See `examples/custom_strategy_usage.py` for comprehensive usage examples:
+See example files for comprehensive usage:
+
+### Basic Usage Examples
 
 ```bash
+# Asia Session Sweep examples
 python examples/custom_strategy_usage.py
+
+# GOLD VWAP examples (simple synthetic tests)
+python examples/test_gold_vwap_strategy.py
+```
+
+### Real Data Testing
+
+```bash
+# Full backtest with real Capital.com data
+python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD
 ```
 
 Examples include:
@@ -260,6 +374,8 @@ Examples include:
 2. Creating detector instances
 3. Using detectors with sample data
 4. Configuring multiple assets
+5. Running backtests with historical data
+6. Exporting signals and reports
 
 ## Integration with Live Trading
 
@@ -359,11 +475,14 @@ __all__ = [..., 'MyCustomDetector']
 
 1. **Time Zones**: Always use UTC for consistency
 2. **Data Validation**: Validate input data before processing
-3. **Error Handling**: Return error signals instead of raising exceptions
-4. **Logging**: Use logger for debugging and monitoring
-5. **Config Validation**: Validate config structure before use
-6. **Testing**: Test with historical data before live deployment
-7. **Signal Deduplication**: Implement caching if using in live system
+3. **Duplicate Timestamps**: Remove duplicate timestamps before analysis
+4. **Error Handling**: Return error signals instead of raising exceptions
+5. **Logging**: Use logger for debugging and monitoring
+6. **Config Validation**: Validate config structure before use
+7. **Testing**: Test with historical data before live deployment
+8. **Signal Deduplication**: Implement caching if using in live system
+9. **Minimum Data**: Ensure sufficient historical data (3 hours for VWAP, full session for sweep)
+10. **Price Extremes**: VWAP strategy validates 3-hour extremes for better signal quality
 
 ## Troubleshooting
 
@@ -378,30 +497,53 @@ __all__ = [..., 'MyCustomDetector']
 - Ensure all required parameters are in config
 
 ### Issue: "No signals detected"
-- Verify data has sufficient history (covers session period)
-- Check signal window time range
+- Verify data has sufficient history:
+  - Session Sweep: Must cover full session period (e.g., 3-7 AM for Asia session)
+  - VWAP: Must have at least 36 candles (3 hours at 5m intervals)
+- Check signal window time range aligns with market activity
 - Confirm timezone settings (should be UTC)
 - Review detector logs for debugging info
+- For VWAP: Check if price is actually reaching VWAP bands extremes
+- For VWAP: Verify 3-hour extreme conditions are being met
 
 ### Issue: "Module not found"
 - Ensure project root is in Python path
 - Check detector_module path is correct
 - Verify file structure matches module path
 
+### Issue: "cannot reindex on an axis with duplicate labels"
+- This occurs with duplicate timestamps in data
+- Fixed in VWAP detector v1.1+ (automatic duplicate removal)
+- Manually clean data: `df.drop_duplicates(subset=['timestamp'], keep='last')`
+
+### Issue: "Insufficient data: need at least 36 candles"
+- VWAP requires 3 hours of history for extreme validation
+- Ensure your data fetch starts early enough in the day
+- For testing, use full day of data
+
 ## Future Enhancements
 
 Potential additions:
-- [ ] Chart generation for signals
+- [ ] Chart generation for signals (with VWAP bands visualization)
 - [ ] Multiple session tracking (e.g., Asia + London)
 - [ ] Volume profile integration
 - [ ] Dynamic session range calculation
 - [ ] Multi-timeframe analysis
 - [ ] Machine learning signal filtering
+- [ ] Adaptive VWAP standard deviation
+- [ ] Combined strategy signals (e.g., session sweep + VWAP confluence)
+- [ ] Real-time alert system
+- [ ] Performance analytics dashboard
 
 ## Support
 
 For issues or questions:
-1. Check the examples in `examples/custom_strategy_usage.py`
-2. Review test script in `tests/test_asia_session_sweep.py`
-3. Check logs for detailed error messages
-4. Refer to main project documentation
+1. Check the examples:
+   - `examples/custom_strategy_usage.py` (Asia Session Sweep)
+   - `examples/test_gold_vwap_strategy.py` (GOLD VWAP)
+2. Review test scripts:
+   - `tests/test_asia_session_sweep.py`
+   - `tests/test_gold_vwap.py`
+3. See comprehensive testing guide: `TESTING_README.md`
+4. Check logs for detailed error messages
+5. Refer to main project documentation

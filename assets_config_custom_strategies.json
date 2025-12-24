@@ -6,6 +6,13 @@
       "timeframe": "5m",
       "strategy": "session_sweep",
       "description": "DAX Index - Asia session sweep strategy"
+    },
+    {
+      "symbol": "GOLD",
+      "fetch_symbol": "GOLD",
+      "timeframe": "5m",
+      "strategy": "vwap",
+      "description": "Gold - VWAP mean reversion strategy"
     }
   ],
   "strategies": {
@@ -22,6 +29,21 @@
       "signal_conditions": {
         "long": "Price breaks above session high AND last candle is bearish (close < open)",
         "short": "Price breaks below session low AND last candle is bullish (close > open)"
+      }
+    },
+    "vwap": {
+      "detector_class": "VWAPDetector",
+      "detector_module": "src.bot.custom_scripts.vwap_detector",
+      "description": "VWAP mean reversion with standard deviation bands and reversal candle confirmation",
+      "parameters": {
+        "num_std": 1.0,
+        "signal_window_start": "13:00",
+        "signal_window_end": "15:00",
+        "anchor_period": "day"
+      },
+      "signal_conditions": {
+        "long": "Price breaks below VWAP lower band AND last candle is bullish (close > open) AND previous candle was bearish AND lowest low of last 3 candles is the lowest in last 3 hours",
+        "short": "Price breaks above VWAP upper band AND last candle is bearish (close < open) AND previous candle was bullish AND highest high of last 3 candles is the highest in last 3 hours"
       }
     }
   }
