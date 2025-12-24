@@ -108,28 +108,10 @@ export CAPITAL_COM_API_KEY="your_key"
 export CAPITAL_COM_PASSWORD="your_password"
 export CAPITAL_COM_IDENTIFIER="your_email"
 
-# Run Asia Session Sweep backtest
-python tests/test_asia_session_sweep.py \
-  --start 2024-12-01 \
-  --end 2024-12-20 \
-  --config assets_config_custom_strategies.json \
-  --symbol DE40
-
-# Run GOLD VWAP backtest
-python tests/test_gold_vwap.py \
-  --start 2025-12-01 \
-  --end 2025-12-24 \
-  --symbol GOLD \
-  --export gold_signals.csv \
-  --report gold_report.txt
-
-# Run BTC VWAP backtest
-python tests/test_btc_vwap.py \
-  --start 2025-12-01 \
-  --end 2025-12-24 \
-  --symbol BTC \
-  --export btc_signals.csv \
-  --report btc_report.txt
+# Use the unified test script for any asset
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-15 --end 2025-12-24
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-01 --end 2025-12-24 --export btc_signals.csv
+python tests/test_custom_strategy.py --asset DE40 --start 2024-12-01 --end 2024-12-20 --report dax_report.txt
 ```
 
 ## Available Strategies
@@ -344,41 +326,33 @@ detector = loader.create_detector('DE40')
 
 ## Testing
 
-### Test Script Usage
+### Unified Test Script
 
-#### Asia Session Sweep
-
-```bash
-python tests/test_asia_session_sweep.py \
-  --start 2024-12-01 \
-  --end 2024-12-20 \
-  --config assets_config_custom_strategies.json \
-  --symbol DE40
-```
-
-#### GOLD VWAP
+Test any custom strategy with a single script:
 
 ```bash
-python tests/test_gold_vwap.py \
-  --start 2025-12-01 \
-  --end 2025-12-24 \
-  --symbol GOLD \
-  --export results/gold_signals.csv \
-  --report results/gold_report.txt
+# Test any asset from your config
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-15 --end 2025-12-24
+
+# Export signals and report
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-01 --end 2025-12-24 \
+  --export btc_signals.csv --report btc_report.txt
+
+# Test multiple assets easily
+python tests/test_custom_strategy.py --asset DE40 --start 2024-12-01 --end 2024-12-20
 ```
 
-#### Interactive Test Runner
-
-```bash
-./run_strategy_tests.sh
-# Follow the prompts to select strategy and date range
-```
+**Benefits:**
+- ✅ One script for all strategies
+- ✅ Automatic strategy detection from config
+- ✅ Consistent interface across all assets
+- ✅ No need to create new test scripts
 
 ### Test Output
 
 1. **Console Report**: Summary statistics and signal details
-2. **Text Report**: Detailed report (VWAP only with `--report` flag)
-3. **CSV Export**: All trade signals (VWAP only with `--export` flag)
+2. **Text Report**: Detailed report (with `--report` flag)
+3. **CSV Export**: All trade signals (with `--export` flag)
 
 ### Report Sections
 
@@ -387,6 +361,8 @@ python tests/test_gold_vwap.py \
 - **Short Signals**: Detailed breakdown of each short signal
 - **No Signal Examples**: Sample reasons for no signals
 - **Errors**: Any errors encountered
+
+For detailed testing documentation, see [TESTING_README.md](../TESTING_README.md)
 
 ## Examples
 
@@ -405,8 +381,10 @@ python examples/test_gold_vwap_strategy.py
 ### Real Data Testing
 
 ```bash
-# Full backtest with real Capital.com data
-python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD
+# Test any custom strategy with historical data
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-15 --end 2025-12-24
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-01 --end 2025-12-24 --export btc_signals.csv
+python tests/test_custom_strategy.py --asset DE40 --start 2024-12-01 --end 2024-12-20 --report dax_report.txt
 ```
 
 Examples include:

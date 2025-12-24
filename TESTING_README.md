@@ -2,103 +2,67 @@
 
 This directory contains test scripts for validating custom trading strategies with historical data.
 
-## Available Test Scripts
+## Quick Start - Unified Test Script
 
-### 1. Asia Session Sweep Strategy (DE40/DAX)
-**File:** `tests/test_asia_session_sweep.py`
+### **Single Test Script for All Strategies**
 
-Tests the Asia session sweep detector on DE40 (DAX Index) using real historical data from Capital.com.
+**File:** `tests/test_custom_strategy.py`
+
+A universal test script that works with **any** custom detector configured in your assets config file.
 
 #### Usage:
 ```bash
-# Basic test for date range
-python tests/test_asia_session_sweep.py --start 2025-12-15 --end 2025-12-24 --symbol DE40
+# Test any asset from your config
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-15 --end 2025-12-24
 
-# Test with custom config
-python tests/test_asia_session_sweep.py --start 2025-12-01 --end 2025-12-24 --config my_config.json
+# Export signals to CSV
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-01 --end 2025-12-24 --export btc_signals.csv
+
+# Save full report to file
+python tests/test_custom_strategy.py --asset DE40 --start 2024-12-01 --end 2024-12-20 --report dax_report.txt
+
+# Use custom config file
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-01 --end 2025-12-24 --config my_config.json
 ```
 
-#### Strategy Details:
+#### Command-Line Arguments
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `--asset` | Yes | - | Asset symbol (e.g., GOLD, BTC, DE40) |
+| `--start` | Yes | - | Start date in YYYY-MM-DD format |
+| `--end` | Yes | - | End date in YYYY-MM-DD format |
+| `--config` | No | assets_config_custom_strategies.json | Path to configuration file |
+| `--export` | No | - | Export signals to CSV file path |
+| `--report` | No | - | Save report to text file path |
+
+#### Key Features:
+- ✅ **Universal**: Works with any detector in your config
+- ✅ **Auto-detection**: Automatically determines strategy type and parameters
+- ✅ **Flexible exports**: CSV signals and text reports
+- ✅ **Smart defaults**: Adapts minimum candle requirements per strategy
+- ✅ **Error handling**: Comprehensive validation and logging
+
+---
+
+## Supported Strategies
+
+The unified test script automatically supports all strategies configured in `assets_config_custom_strategies.json`:
+
+### 1. VWAP Mean Reversion (GOLD & BTC)
+- **Indicator**: VWAP with configurable standard deviation bands (daily reset)
+- **GOLD Signal Window**: 13:00-15:00 UTC
+- **BTC Signal Window**: 14:00-16:00 UTC
+- **Long Signal**: Price < VWAP lower band + bullish reversal candle + previous candle was bearish
+- **Short Signal**: Price > VWAP upper band + bearish reversal candle + previous candle was bullish
+
+### 2. Asia Session Sweep (DE40/DAX)
 - **Session**: 03:00-07:00 UTC (Asia trading session)
 - **Signal Window**: 08:30-09:30 UTC (European market open)
 - **Long Signal**: Price breaks below session low + bullish reversal candle
 - **Short Signal**: Price breaks above session high + bearish reversal candle
 
----
 
-### 2. VWAP Mean Reversion Strategy (GOLD)
-**File:** `tests/test_gold_vwap.py`
-
-Tests the VWAP mean reversion detector on GOLD using real historical data from Capital.com.
-
-#### Usage:
-```bash
-# Basic test for date range
-python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD
-
-# Test with custom config
-python tests/test_gold_vwap.py --start 2025-12-01 --end 2025-12-24 --symbol GOLD --config assets_config_custom_strategies.json
-
-# Export signals to CSV
-python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD --export gold_signals.csv
-
-# Save report to file
-python tests/test_gold_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol GOLD --report gold_report.txt
-```
-
-#### Strategy Details:
-- **Indicator**: VWAP with 1.0 standard deviation bands (daily reset)
-- **Signal Window**: 13:00-15:00 UTC
-- **Long Signal**: Price < VWAP lower band + bullish reversal candle + previous candle was bearish
-- **Short Signal**: Price > VWAP upper band + bearish reversal candle + previous candle was bullish
-
----
-
-### 3. VWAP Mean Reversion Strategy (BTC)
-**File:** `tests/test_btc_vwap.py`
-
-Tests the VWAP mean reversion detector on BTC using real historical data from Capital.com.
-
-#### Usage:
-```bash
-# Basic test for date range
-python tests/test_btc_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol BTC
-
-# Test with custom config
-python tests/test_btc_vwap.py --start 2025-12-01 --end 2025-12-24 --symbol BTC --config assets_config_custom_strategies.json
-
-# Export signals to CSV
-python tests/test_btc_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol BTC --export btc_signals.csv
-
-# Save report to file
-python tests/test_btc_vwap.py --start 2025-12-15 --end 2025-12-24 --symbol BTC --report btc_report.txt
-```
-
-#### Strategy Details:
-- **Indicator**: VWAP with 1.0 standard deviation bands (daily reset)
-- **Signal Window**: 14:00-16:00 UTC
-- **Long Signal**: Price < VWAP lower band + bullish reversal candle + previous candle was bearish
-- **Short Signal**: Price > VWAP upper band + bearish reversal candle + previous candle was bullish
-
----
-
-## Command-Line Arguments
-
-### Common Arguments (Both Scripts)
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `--start` | Yes | - | Start date in YYYY-MM-DD format |
-| `--end` | Yes | - | End date in YYYY-MM-DD format |
-| `--symbol` | No | DE40/GOLD/BTC | Asset symbol to test |
-| `--config` | No | assets_config_custom_strategies.json | Path to configuration file |
-
-### VWAP Additional Arguments (GOLD & BTC)
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `--export` | No | - | Export signals to CSV file path |
-| `--report` | No | - | Save report to text file path |
 
 ---
 
@@ -179,8 +143,9 @@ Ensure your `assets_config_custom_strategies.json` includes the assets you want 
 ## Output
 
 ### Console Report
-Both scripts output a detailed report to the console including:
+The test script outputs a detailed report to the console including:
 - Test period and total candles analyzed
+- Asset and strategy information
 - Signal summary (long/short/no signal/errors)
 - Detailed list of all detected signals with:
   - Timestamp
@@ -188,17 +153,17 @@ Both scripts output a detailed report to the console including:
   - Strategy-specific indicators (session high/low or VWAP bands)
   - Signal reason
 
-### CSV Export (VWAP strategies)
+### CSV Export
 Export signals to CSV for further analysis with columns:
 - timestamp
 - signal_type (long/short)
 - direction (BUY/SELL)
 - symbol
 - current_price
-- vwap, vwap_upper, vwap_lower
+- Strategy-specific fields (vwap, vwap_upper, vwap_lower, session_high, session_low, etc.)
 - reason
 
-### Text Report (VWAP strategies)
+### Text Report
 Save the full console report to a text file for documentation.
 
 ---
@@ -207,65 +172,79 @@ Save the full console report to a text file for documentation.
 
 ### Test Recent Trading Week
 ```bash
-# Test DE40 for past week
-python tests/test_asia_session_sweep.py --start 2025-12-18 --end 2025-12-24 --symbol DE40
-
-# Test GOLD for past week with export
-python tests/test_gold_vwap.py --start 2025-12-18 --end 2025-12-24 --symbol GOLD --export results/gold_dec_week.csv
-
-# Test BTC for past week with export
-python tests/test_btc_vwap.py --start 2025-12-18 --end 2025-12-24 --symbol BTC --export results/btc_dec_week.csv
+# Test any asset for past week
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-18 --end 2025-12-24
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-18 --end 2025-12-24 --export btc_week.csv
+python tests/test_custom_strategy.py --asset DE40 --start 2024-12-18 --end 2024-12-24 --report dax_week.txt
 ```
 
 ### Test Full Month
 ```bash
-# Test GOLD - entire December
-python tests/test_gold_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol GOLD --report results/gold_december.txt
-
-# Test BTC - entire December
-python tests/test_btc_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol BTC --report results/btc_december.txt
+# Test entire December for different assets
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-01 --end 2025-12-31 --report gold_december.txt
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-01 --end 2025-12-31 --export btc_december.csv
 ```
 
 ### Compare Different Periods
 ```bash
-# Test GOLD - November
-python tests/test_gold_vwap.py --start 2025-11-01 --end 2025-11-30 --symbol GOLD --export results/gold_november.csv
+# Test GOLD - November vs December
+python tests/test_custom_strategy.py --asset GOLD --start 2025-11-01 --end 2025-11-30 --export gold_november.csv
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-01 --end 2025-12-31 --export gold_december.csv
 
-# Test GOLD - December
-python tests/test_gold_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol GOLD --export results/gold_december.csv
-
-# Test BTC - November
-python tests/test_btc_vwap.py --start 2025-11-01 --end 2025-11-30 --symbol BTC --export results/btc_november.csv
-
-# Test BTC - December
-python tests/test_btc_vwap.py --start 2025-12-01 --end 2025-12-31 --symbol BTC --export results/btc_december.csv
+# Test BTC - November vs December
+python tests/test_custom_strategy.py --asset BTC --start 2025-11-01 --end 2025-11-30 --export btc_november.csv
+python tests/test_custom_strategy.py --asset BTC --start 2025-12-01 --end 2025-12-31 --export btc_december.csv
 
 # Compare CSV files in spreadsheet or Python
+```
+
+### Batch Testing Multiple Assets
+```bash
+# Create a simple bash script
+for asset in GOLD BTC DE40; do
+  python tests/test_custom_strategy.py --asset $asset --start 2025-12-01 --end 2025-12-24 \
+    --export "results/${asset}_signals.csv" \
+    --report "results/${asset}_report.txt"
+done
 ```
 
 ---
 
 ## Troubleshooting
 
+### Error: "Asset {symbol} not found in config"
+1. Check symbol name matches exactly (case-sensitive) in your config file
+2. Verify the symbol is listed in the "assets" section
+3. Use `--config` to specify the correct config file path
+
 ### Error: "cannot reindex on an axis with duplicate labels"
-This occurs when there are duplicate timestamps in the data. The test scripts now automatically handle this by removing duplicates, but if you see this error:
+This occurs when there are duplicate timestamps in the data. The unified test script automatically handles this, but if you see this error:
 1. Check your data fetching logic
 2. Ensure timestamps are unique before passing to detector
-3. Use `df.drop_duplicates(subset=['timestamp'], keep='last')` to clean data
+3. The script uses `drop_duplicates()` to clean data automatically
 
 ### Error: "Failed to create Capital.com fetcher"
 1. Verify your `.env` file exists in the project root
-2. Check that all required credentials are set
+2. Check that all required credentials are set:
+   - `CAPITALCOM_API_KEY`
+   - `CAPITALCOM_IDENTIFIER`
+   - `CAPITALCOM_PASSWORD`
 3. Ensure `CAPITALCOM_DEMO=true` for testing with demo account
 
 ### No Signals Detected
-1. Verify the date range includes trading days (not weekends)
+1. Verify the date range includes trading days (not weekends/holidays)
 2. Check that the signal window aligns with your trading hours
 3. Review the "No Signal" reasons in the report
 4. Ensure sufficient historical data is available (need full day for VWAP)
+5. Check if the strategy's signal window is active during your test period
 
 ### Insufficient Data for VWAP
 The VWAP detector requires at least 24 hours (288 candles at 5m intervals) of historical data for accurate calculation. Ensure your start date provides enough history.
+
+### Wrong Strategy Being Used
+1. Verify the strategy name in your config matches the asset
+2. Check that the strategy configuration exists in the "strategies" section
+3. Review the console output at startup to confirm which strategy is loaded
 
 ---
 
@@ -277,26 +256,77 @@ The VWAP detector requires at least 24 hours (288 candles at 5m intervals) of hi
 4. **Compare Periods**: Test multiple date ranges to validate strategy consistency
 5. **Review No-Signals**: Understand why signals aren't generated in certain conditions
 6. **Check Time Windows**: Ensure your signal windows align with market activity
+7. **Batch Testing**: Use shell scripts to test multiple assets automatically
+8. **Version Control**: Save config files and results for reproducibility
 
 ---
 
-## Adding New Test Scripts
+## Adding New Custom Strategies
 
-To create a test script for a new strategy:
+To test a new custom strategy:
 
-1. Copy `tests/test_gold_vwap.py` as a template
-2. Update the detector import and initialization
-3. Modify the fetch_data() parameters (symbol, asset_type, timeframe)
-4. Adjust min_required candles based on strategy requirements
-5. Update report generation for strategy-specific fields
-6. Add usage documentation to this README
+1. **Create the detector** in `src/bot/custom_scripts/my_detector.py`
+2. **Add to config** `assets_config_custom_strategies.json`:
+```json
+{
+  "assets": [
+    {
+      "symbol": "MYASSET",
+      "fetch_symbol": "MYASSET",
+      "timeframe": "5m",
+      "strategy": "my_strategy"
+    }
+  ],
+  "strategies": {
+    "my_strategy": {
+      "detector_class": "MyDetector",
+      "detector_module": "src.bot.custom_scripts.my_detector",
+      "parameters": {
+        "param1": "value1",
+        "param2": 123
+      }
+    }
+  }
+}
+```
+3. **Test immediately**:
+```bash
+python tests/test_custom_strategy.py --asset MYASSET --start 2025-12-01 --end 2025-12-24
+```
+
+No need to create a new test script - the unified script handles it automatically!
+
+
 
 ---
 
-## Support
+## Support & Documentation
 
-For issues or questions:
+For more information:
+- **Custom Detectors**: See [CUSTOM_SIGNAL_DETECTORS.md](docs/CUSTOM_SIGNAL_DETECTORS.md)
+- **Scheduler Setup**: See [CUSTOM_SCHEDULER_README.md](CUSTOM_SCHEDULER_README.md)
+- **Config Examples**: Check `assets_config_custom_strategies.json`
+
+For issues:
 1. Check the troubleshooting section above
 2. Review detector implementation in `src/bot/custom_scripts/`
-3. Verify configuration in `assets_config_custom_strategies.json`
+3. Verify configuration in your config file
 4. Enable debug logging: `logging.basicConfig(level=logging.DEBUG)`
+5. Check Capital.com API connectivity
+
+---
+
+## Summary
+
+The unified test script (`test_custom_strategy.py`) provides:
+- ✅ **One script for all strategies**
+- ✅ **Simple asset-based testing** (`--asset`)
+- ✅ **Automatic strategy detection**
+- ✅ **Flexible exports** (CSV + reports)
+- ✅ **Easy to extend** (no new scripts needed)
+- ✅ **Consistent interface** across all detectors
+
+**Start testing now:**
+```bash
+python tests/test_custom_strategy.py --asset GOLD --start 2025-12-15 --end 2025-12-24
+```
