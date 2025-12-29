@@ -68,5 +68,19 @@
         "short": "Price breaks above VWAP upper band AND last candle is bearish (close < open) AND previous candle was bullish AND highest high of last 3 candles is the highest in last 3 hours"
       }
     }
+  },
+  "helper_utilities": {
+    "rsi_divergence": {
+      "class": "RSIDivergenceHelper",
+      "module": "src.bot.custom_scripts.rsi_divergence_detector",
+      "description": "RSI divergence analysis helper - NOT a standalone detector. Use within other detectors for confirmation.",
+      "usage": "from src.bot.custom_scripts.rsi_divergence_detector import RSIDivergenceHelper\nrsi_helper = RSIDivergenceHelper(rsi_period=14)\ndivergence = rsi_helper.analyze_divergence(df)\nif divergence['bullish_regular']: ...",
+      "parameters": {
+        "rsi_period": 14,
+        "divergence_lookback": 14,
+        "rsi_oversold": 30.0,
+        "rsi_overbought": 70.0
+      }
+    }
   }
 }

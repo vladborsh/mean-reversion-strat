@@ -221,3 +221,57 @@ class Indicators:
                 result_df['vwap_upper'], 
                 result_df['vwap_lower']
             )
+    
+    @staticmethod
+    def rsi(df: pd.DataFrame, period: int = 14, column: str = 'close') -> pd.Series:
+        """
+        Calculate RSI using Wilder's smoothing method.
+        
+        See docs/INDICATORS.md for detailed documentation.
+        
+        Args:
+            df: DataFrame with price data
+            period: RSI period (default: 14)
+            column: Column name (default: 'close')
+            
+        Returns:
+            pd.Series: RSI values (0-100)
+        """
+        if df.empty:
+            raise ValueError("Input DataFrame is empty")
+        
+        if column not in df.columns:
+            raise ValueError(f"Column '{column}' not found in DataFrame")
+        
+        if period < 2:
+            raise ValueError(f"Period must be at least 2, got {period}")
+        
+        # Get price series
+        prices = df[column].copy()
+        
+        # Calculate price changes
+        delta = prices.diff()
+        
+        # Separate gains and losses
+        gains = delta.where(delta > 0, 0.0)
+        losses = -delta.where(delta < 0, 0.0)
+        
+        # Calculate initial averages using simple mean for first period
+        avg_gain = gains.rolling(window=period, min_periods=period).mean()
+        avg_loss = losses.rolling(window=period, min_periods=period).mean()
+        
+        # Apply Wilder's smoothing for subsequent values
+        # Wilder's smoothing: new_avg = (prev_avg * (period - 1) + current_value) / period
+        for i in range(period, len(df)):
+            avg_gain.iloc[i] = (avg_gain.iloc[i - 1] * (period - 1) + gains.iloc[i]) / period
+            avg_loss.iloc[i] = (avg_loss.iloc[i - 1] * (period - 1) + losses.iloc[i]) / period
+        
+        # Calculate RS and RSI
+        rs = avg_gain / avg_loss
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+        
+        # Handle edge cases: when avg_loss=0 RSI=100, when avg_gain=0 RSI=0
+        rsi = rsi.where(avg_loss != 0, 100.0)
+        rsi = rsi.where(avg_gain != 0, 0.0)
+        
+        return rsi

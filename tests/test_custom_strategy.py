@@ -130,23 +130,38 @@ class CustomStrategyTester:
                 logger.warning(f"No data returned for {fetch_symbol}")
                 return pd.DataFrame()
             
-            # Ensure timestamp column
-            if 'timestamp' not in data.columns and 'time' in data.columns:
-                data['timestamp'] = data['time']
+            logger.info(f"Fetched {len(data)} candles")
+            logger.info(f"Columns: {list(data.columns)}")
             
-            # Remove duplicates
+            # Ensure timestamp column exists
+            if 'timestamp' not in data.columns:
+                if 'time' in data.columns:
+                    data['timestamp'] = data['time']
+                elif 'date' in data.columns:
+                    data['timestamp'] = data['date']
+                elif data.index.name in ['timestamp', 'time', 'date']:
+                    data = data.reset_index()
+                    if 'index' in data.columns:
+                        data['timestamp'] = data['index']
+                else:
+                    logger.error(f"No timestamp column found. Available columns: {list(data.columns)}")
+                    raise ValueError("Data must contain a 'timestamp', 'time', or 'date' column")
+            
+            # Remove duplicates if timestamp column exists
             if 'timestamp' in data.columns:
                 initial_len = len(data)
                 data = data.drop_duplicates(subset=['timestamp'], keep='last')
                 if len(data) < initial_len:
                     logger.info(f"Removed {initial_len - len(data)} duplicate timestamps")
-            
-            # Sort by timestamp
-            if 'timestamp' in data.columns:
+                
+                # Sort by timestamp
                 data = data.sort_values('timestamp').reset_index(drop=True)
-            
-            logger.info(f"Fetched {len(data)} candles")
-            logger.info(f"Date range: {data['timestamp'].min()} to {data['timestamp'].max()}")
+                
+                # Log date range
+                try:
+                    logger.info(f"Date range: {data['timestamp'].min()} to {data['timestamp'].max()}")
+                except Exception as e:
+                    logger.warning(f"Could not log date range: {e}")
             
             return data
         
