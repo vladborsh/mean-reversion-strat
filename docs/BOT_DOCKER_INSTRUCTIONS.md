@@ -2,6 +2,8 @@
 
 This document provides instructions for building and running the Podman container for the Mean Reversion Strategy Scheduler with Telegram Bot integration.
 
+> **Note**: This project uses Podman and podman-compose. All commands use `podman` and `podman-compose`.
+
 ## Related Documentation
 
 - **[Telegram Bot Integration](TELEGRAM_BOT_INTEGRATION.md)** - Complete guide to setting up and using the Telegram bot
@@ -14,11 +16,13 @@ This document provides instructions for building and running the Podman containe
 
 Before building and running the container, ensure you have:
 
-1. **Podman installed** on your system
+1. **Podman and Podman Compose installed** on your system
+   - macOS/Windows: [Podman Desktop](https://podman.io/getting-started/installation)
+   - Linux: `sudo apt-get install podman podman-compose`
 2. **Environment variables** configured (see Environment Setup below)
-3. **Configuration files** in place:
-   - `results/best_configs_balanced.json` (optimized strategy parameters)
+3. **Configuration files** in place (for legacy bots - unified bot uses bot_config.json)
    - `.env` file with required API credentials
+   - See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for unified bot setup
 
 ## Environment Setup
 
@@ -49,13 +53,18 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 
 ## Build Instructions
 
+> **Recommended**: Use the unified bot via podman-compose. See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for complete setup.
+
 ### Build the Podman Image
 
 ```bash
 # Navigate to the project root directory
 cd /path/to/mean-reversion-strat
 
-# Build the Podman image for the bot
+# Build using podman-compose (recommended)
+podman-compose build unified-bot
+
+# Or build directly with Podman
 podman build -f Dockerfile.bot -t mean-reversion-bot:latest .
 ```
 
@@ -68,10 +77,26 @@ podman images | grep mean-reversion-bot
 
 ## Run Instructions
 
-### Basic Run (with .env file)
+> **Important**: The unified bot (unified_bot.py) is now the recommended way to run trading strategies. 
+> This section documents legacy individual scheduler usage. See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for unified bot setup.
+
+### Using Podman Compose (Recommended)
 
 ```bash
-# Run the container with environment file
+# Run the unified bot (recommended)
+podman-compose up -d unified-bot
+
+# View logs
+podman-compose logs -f unified-bot
+
+# Stop the bot
+podman-compose stop unified-bot
+```
+
+### Legacy: Basic Run (with .env file)
+
+```bash
+# Run the legacy scheduler container with environment file
 podman run --rm \
   --env-file .env \
   -v $(pwd)/live_logs:/app/live_logs \
@@ -79,7 +104,7 @@ podman run --rm \
   mean-reversion-bot:latest
 ```
 
-### Run with Environment Variables
+### Legacy: Run with Environment Variables
 
 ```bash
 # Run with explicit environment variables
@@ -93,7 +118,7 @@ podman run --rm \
   mean-reversion-bot:latest
 ```
 
-### Run in Background (Detached Mode)
+### Legacy: Run in Background (Detached Mode)
 
 ```bash
 # Run the container in the background
@@ -106,7 +131,7 @@ podman run -d \
   mean-reversion-bot:latest
 ```
 
-### Run without Telegram (Data Analysis Only)
+### Legacy: Run without Telegram (Data Analysis Only)
 
 If you want to run the strategy without Telegram notifications:
 
@@ -123,16 +148,20 @@ podman run --rm \
 ## Volume Mounts Explained
 
 - **`live_logs:/app/live_logs`**: Persistent storage for trading logs and analysis results
-- **`results:/app/results`**: Access to optimized strategy configurations
+- **`results:/app/results`**: Access to optimized strategy configurations (legacy bots only)
+
+> **Note**: The unified bot uses bot_config.json for configuration instead of results directory. See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md#configuration).
 
 ## Container Behavior
 
 ### What the Container Does
 
+> **Note**: This describes legacy scheduler behavior. The unified bot has enhanced features including parallel execution and better error handling.
+
 1. **Initializes** the live strategy scheduler
-2. **Loads** optimized configurations from `results/best_configs_balanced.json`
+2. **Loads** configuration (unified bot: bot_config.json, legacy: results/best_configs_balanced.json)
 3. **Runs analysis cycles** every 5 minutes (:00, :05, :10, etc.)
-4. **Validates trading hours** (6:00-17:00 UTC)
+4. **Validates trading hours** (configured per strategy)
 5. **Fetches live data** from Capital.com
 6. **Analyzes symbols** for trading signals
 7. **Sends notifications** via Telegram (if configured)
@@ -140,13 +169,26 @@ podman run --rm \
 
 ### Schedule
 
-- **Frequency**: Every 5 minutes
-- **Trading Hours**: 6:00 AM - 5:00 PM UTC
-- **Weekend**: No trading (automatic detection)
+- **Frequency**: Every 5 minutes (configurable in bot_config.json for unified bot)
+- **Trading Hours**: Configured per symbol/strategy
+- **Weekend**: Automatic detection and skip
 
 ## Monitoring and Logs
 
-### View Container Logs
+### View Container Logs (Podman Compose)
+
+```bash
+# View logs from running unified bot
+podman-compose logs unified-bot
+
+# Follow logs in real-time
+podman-compose logs -f unified-bot
+
+# View last 100 lines
+podman-compose logs --tail=100 unified-bot
+```
+
+### View Container Logs (Direct Podman)
 
 ```bash
 # View logs from running container
@@ -166,7 +208,10 @@ Log files are automatically created in the `live_logs/` directory:
 ### Container Health Check
 
 ```bash
-# Check if container is running
+# Using podman-compose
+podman-compose ps
+
+# Check if container is running (direct Docker)
 podman ps | grep mean-reversion-bot
 
 # Check container status
@@ -174,6 +219,18 @@ podman inspect mean-reversion-bot
 ```
 
 ## Stopping the Container
+
+### Using Podman Compose (Recommended)
+
+```bash
+# Stop the unified bot
+podman-compose stop unified-bot
+
+# Remove the container (keeps image)
+podman-compose down
+```
+
+### Direct Podman Commands
 
 ### Graceful Shutdown
 
@@ -204,13 +261,16 @@ podman rm mean-reversion-bot
 ```
 ImportError: attempted relative import with no known parent package
 ```
-**Solution**: This has been fixed in the Dockerfile by using a launcher script (`run_bot.py`) that properly sets up the Python path for relative imports. If you encounter this, rebuild the Podman image.
+**Solution**: This has been fixed in Dockerfile.bot. If you encounter this, rebuild the Podman image with `podman-compose build unified-bot`.
 
 #### 2. "Configuration file not found"
 ```
-ERROR: Configuration file not found: results/best_configs_balanced.json
+ERROR: Configuration file not found: bot_config.json or results/best_configs_balanced.json
 ```
-**Solution**: Ensure the `results/` directory with optimized configurations is mounted or present.
+**Solution**: 
+- **Unified bot**: Ensure `bot_config.json` exists in project root and is properly configured
+- **Legacy bots**: Ensure the `results/` directory with optimized configurations is mounted or present
+- See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md#configuration) for configuration details
 
 #### 3. "Missing required environment variables"
 ```
@@ -235,7 +295,10 @@ ERROR: Failed to initialize Telegram bot
 To run with more verbose logging:
 
 ```bash
-# Run with debug logging
+# Run with debug logging using podman-compose
+podman-compose up unified-bot  # Remove -d flag to see logs
+
+# Or run directly with Docker
 podman run --rm \
   --env-file .env \
   -e PYTHONPATH=/app/src:/app \
@@ -250,7 +313,10 @@ podman run --rm \
 To access the container for debugging:
 
 ```bash
-# Run interactive shell
+# Using podman-compose
+podman-compose exec unified-bot /bin/bash
+
+# Or run interactive shell directly
 podman run -it --rm \
   --env-file .env \
   -v $(pwd):/app \
@@ -285,15 +351,31 @@ podman run -it --rm \
 
 For production deployment, consider:
 
-1. **Container Orchestration**: Use Podman Compose or Kubernetes
-2. **Health Checks**: Implement health check endpoints
-3. **Monitoring**: Set up alerting for container failures
-4. **Backup**: Regular backup of logs and configurations
-5. **Resource Limits**: Set appropriate CPU and memory limits
+1. **Use Unified Bot**: Use podman-compose with unified-bot service (see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md))
+2. **Container Orchestration**: Use Podman Compose or Kubernetes
+3. **Cloud Deployment**: See [AWS_ECS_DEPLOYMENT.md](AWS_ECS_DEPLOYMENT.md) for AWS setup
+4. **Health Checks**: Implement health check endpoints (already configured in podman-compose.yml)
+5. **Monitoring**: Set up alerting for container failures
+6. **Backup**: Regular backup of logs and configurations
+7. **Resource Limits**: Set appropriate CPU and memory limits
 
-## Example Podman Compose
+## Migration to Unified Bot
 
-For easier management, you can use Podman Compose:
+The unified bot (unified_bot.py) is the recommended approach for running trading strategies. It provides:
+
+- **Parallel execution**: Run multiple strategies simultaneously
+- **Shared infrastructure**: Single Telegram bot and signal cache
+- **Better error handling**: One strategy failure doesn't stop others
+- **Centralized configuration**: Single bot_config.json file
+- **Improved monitoring**: Better logging and health checks
+
+See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for complete setup instructions and the migration guide section.
+
+## Example Podman Compose (Legacy Reference)
+
+> **Note**: Use the project's main podman-compose.yml file. This is for reference only.
+
+For easier management, the project includes a podman-compose.yml file:
 
 ```yaml
 version: '3.8'

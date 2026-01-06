@@ -204,7 +204,7 @@ aws ecr get-login-password --region $AWS_REGION | podman login --username AWS --
 ### Step 3: Build and Push Container
 ```bash
 # Navigate to your project directory
-cd /Users/Vladyslav_Borsh/Documents/dev/mean-reversion-strat
+cd /path/to/mean-reversion-strat
 
 # Build the container
 podman build -t mean-reversion-strategy:latest .
@@ -537,9 +537,8 @@ Since you're using S3 transport, your results will be automatically stored in yo
 - **Results**: `s3://your-bucket/mean-reversion-strat/optimization/results/`
 - **Logs**: `s3://your-bucket/mean-reversion-strat/optimization/logs/`
 
-### Download Results Using AWS CLI
+### Quick Download
 
-#### Download All Results
 ```bash
 # Create local results directory
 mkdir -p batch-results
@@ -551,192 +550,35 @@ aws s3 sync s3://your-optimization-bucket/mean-reversion-strat/optimization/resu
 ls -la batch-results/
 ```
 
-#### Download Specific Results
+### Comprehensive Analysis
+
+For complete instructions on analyzing batch results, generating PNL charts, and comparing optimization objectives, see:
+
+**📖 [Post-Processing and Results Analysis](POST_PROCESSING.md)**
+
+The post-processing guide includes:
+- Downloading and aggregating AWS Batch results
+- Analyzing optimization results by symbol and objective
+- Generating equity curve visualizations
+- Comparing different optimization strategies
+- Python scripts for automated analysis
+- Troubleshooting common issues
+
+**Quick Start:**
 ```bash
-# Download results from a specific date
-aws s3 cp s3://your-optimization-bucket/mean-reversion-strat/optimization/results/ ./batch-results/ \
-  --recursive --exclude "*" --include "*20250722*"
+# 1. Download results from S3
+aws s3 sync s3://your-bucket/mean-reversion-strat/optimization/results/ ./batch-results/
 
-# Download results for specific symbol
-aws s3 cp s3://your-optimization-bucket/mean-reversion-strat/optimization/results/ ./batch-results/ \
-  --recursive --exclude "*" --include "*EURUSD*"
-```
+# 2. Analyze and generate best configs
+python3 post-processing/analyze_batch_results.py \
+    --results-dir batch-results \
+    --output-dir results
 
-### Aggregate and Analyze Results
+# 3. Generate PNL charts
+python3 post-processing/generate_config_pnl.py \
+    --config-file results/best_configs_balanced.json
 
-#### Simple Aggregation Script
-```bash
-#!/bin/bash
-# Simple results aggregation script
-
-RESULTS_DIR="batch-results"
-OUTPUT_FILE="aggregated_results.csv"
-
-if [ ! -d "$RESULTS_DIR" ]; then
-  echo "Results directory not found. Download results first."
-  exit 1
-fi
-
-# Combine all CSV files
-echo "Aggregating results from $RESULTS_DIR..."
-
-# Get header from first CSV file
-FIRST_FILE=$(find "$RESULTS_DIR" -name "*.csv" | head -1)
-if [ -z "$FIRST_FILE" ]; then
-  echo "No CSV files found in $RESULTS_DIR"
-  exit 1
-fi
-
-# Create aggregated file with header
-head -1 "$FIRST_FILE" > "$OUTPUT_FILE"
-
-# Add filename column to header
-sed -i '' '1s/$/,source_file/' "$OUTPUT_FILE"
-
-# Append all CSV data (without headers) and add filename
-for file in "$RESULTS_DIR"/*.csv; do
-  if [ -f "$file" ]; then
-    filename=$(basename "$file")
-    tail -n +2 "$file" | sed "s/$/,$filename/" >> "$OUTPUT_FILE"
-  fi
-done
-
-echo "Aggregated $(wc -l < "$OUTPUT_FILE") optimization runs to $OUTPUT_FILE"
-```
-
-#### Python Analysis Script
-```python
-#!/usr/bin/env python3
-"""
-Analyze aggregated optimization results
-"""
-import pandas as pd
-import json
-from pathlib import Path
-
-def analyze_results(csv_file='aggregated_results.csv'):
-    """Analyze aggregated optimization results"""
-    
-    if not Path(csv_file).exists():
-        print(f"File {csv_file} not found")
-        return
-    
-    # Load data
-    df = pd.read_csv(csv_file)
-    print(f"Loaded {len(df)} optimization runs")
-    
-    # Extract symbol from parameters or filename
-    def extract_symbol(row):
-        try:
-            if 'parameters' in row and pd.notna(row['parameters']):
-                params = eval(row['parameters'])
-                return params.get('symbol', 'Unknown')
-            elif 'source_file' in row:
-                # Try to extract from filename
-                filename = row['source_file']
-                if 'EURUSD' in filename:
-                    return 'EURUSD'
-                elif 'GBPUSD' in filename:
-                    return 'GBPUSD'
-                elif 'USDJPY' in filename:
-                    return 'USDJPY'
-                # Add more symbols as needed
-            return 'Unknown'
-        except:
-            return 'Unknown'
-    
-    df['symbol'] = df.apply(extract_symbol, axis=1)
-    
-    # Overall statistics
-    print("\n=== OVERALL STATISTICS ===")
-    print(f"Total optimizations: {len(df):,}")
-    print(f"Unique symbols: {df['symbol'].nunique()}")
-    print(f"Average PnL: ${df['final_pnl'].mean():,.2f}")
-    print(f"Median PnL: ${df['final_pnl'].median():,.2f}")
-    print(f"Best PnL: ${df['final_pnl'].max():,.2f}")
-    print(f"Worst PnL: ${df['final_pnl'].min():,.2f}")
-    
-    if 'sharpe_ratio' in df.columns:
-        print(f"Average Sharpe: {df['sharpe_ratio'].mean():.2f}")
-        print(f"Best Sharpe: {df['sharpe_ratio'].max():.2f}")
-    
-    # Best results by symbol
-    print("\n=== BEST RESULTS BY SYMBOL ===")
-    symbol_results = {}
-    
-    for symbol in df['symbol'].unique():
-        if symbol == 'Unknown':
-            continue
-            
-        symbol_data = df[df['symbol'] == symbol]
-        best_idx = symbol_data['final_pnl'].idxmax()
-        best_result = symbol_data.loc[best_idx]
-        
-        symbol_results[symbol] = {
-            'total_tests': len(symbol_data),
-            'best_pnl': float(best_result['final_pnl']),
-            'best_sharpe': float(best_result.get('sharpe_ratio', 0)),
-            'best_win_rate': float(best_result.get('win_rate', 0))
-        }
-        
-        print(f"{symbol:10} | Tests: {len(symbol_data):3d} | "
-              f"Best PnL: ${best_result['final_pnl']:8,.2f} | "
-              f"Sharpe: {best_result.get('sharpe_ratio', 0):5.2f}")
-    
-    # Top 10 performers
-    print("\n=== TOP 10 PERFORMERS ===")
-    top_10 = df.nlargest(10, 'final_pnl')
-    
-    for i, (_, row) in enumerate(top_10.iterrows(), 1):
-        print(f"{i:2d}. {row['symbol']:10} | PnL: ${row['final_pnl']:8,.2f} | "
-              f"Sharpe: {row.get('sharpe_ratio', 0):5.2f} | "
-              f"Win Rate: {row.get('win_rate', 0):5.1%}")
-    
-    # Save analysis
-    analysis = {
-        'summary': {
-            'total_optimizations': len(df),
-            'unique_symbols': df['symbol'].nunique(),
-            'avg_pnl': float(df['final_pnl'].mean()),
-            'median_pnl': float(df['final_pnl'].median()),
-            'best_pnl': float(df['final_pnl'].max()),
-            'worst_pnl': float(df['final_pnl'].min())
-        },
-        'by_symbol': symbol_results
-    }
-    
-    with open('optimization_analysis.json', 'w') as f:
-        json.dump(analysis, f, indent=2)
-    
-    print(f"\nAnalysis saved to optimization_analysis.json")
-
-if __name__ == '__main__':
-    analyze_results()
-```
-
-### Usage Examples
-
-```bash
-# 1. Download and aggregate results
-mkdir -p batch-results
-aws s3 sync s3://your-optimization-bucket/mean-reversion-strat/optimization/results/ ./batch-results/
-bash aggregate_results.sh
-
-# 2. Analyze with Python
-python3 analyze_results.py
-
-# 3. View top performers
-head -20 aggregated_results.csv | column -t -s','
-
-# 4. Filter by symbol
-grep "EURUSD" aggregated_results.csv | sort -t',' -k2 -nr | head -5
-
-# 5. Get summary statistics
-python3 -c "
-import pandas as pd
-df = pd.read_csv('aggregated_results.csv')
-print(df.describe())
-"
+# See POST_PROCESSING.md for complete workflow
 ```
 
 ## Notes and Best Practices

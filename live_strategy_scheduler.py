@@ -2,6 +2,9 @@
 """
 Live Trading Strategy Scheduler
 
+⚠️  DEPRECATED: This scheduler is deprecated and kept for reference only.
+⚠️  Please use unified_bot.py instead, which runs multiple strategies in parallel.
+
 This script runs the mean reversion strategy live on multiple symbols every 5 minutes.
 It loads optimized configurations from assets_config_wr45.json (win rate >45%) and executes
 the strategy in real-time using Capital.com data.
@@ -15,6 +18,9 @@ Features:
 - Real-time logging and monitoring
 - Telegram notifications for trading signals
 - Signal caching to prevent duplicate notifications
+
+MIGRATION: Use unified_bot.py with bot_config.json to run both mean reversion 
+and custom strategies in parallel with better error isolation.
 """
 
 import time

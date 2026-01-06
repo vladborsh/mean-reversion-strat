@@ -4,7 +4,7 @@ This document provides step-by-step instructions for deploying the Mean Reversio
 
 ## Related Documentation
 
-- **[Bot Docker Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Local container setup and testing
+- **[Bot Podman Instructions](BOT_DOCKER_INSTRUCTIONS.md)** - Local container setup and testing
 - **[Telegram Bot Integration](TELEGRAM_BOT_INTEGRATION.md)** - Bot configuration and features
 - **[Signal Cache Persistence](signal_cache_persistence.md)** - DynamoDB configuration for signal caching
 - **[Telegram DynamoDB Persistence](telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
@@ -29,10 +29,10 @@ Before deploying to ECS, ensure you have:
 cd /path/to/mean-reversion-strat
 
 # Build the container
-docker build -f Dockerfile.bot -t mean-reversion-bot:latest .
+podman build -f Dockerfile.bot -t mean-reversion-bot:latest .
 
 # Test locally first
-docker run --rm --env-file .env mean-reversion-bot:latest
+podman run --rm --env-file .env mean-reversion-bot:latest
 ```
 
 ### 1.2 Create ECR Repository
@@ -45,24 +45,103 @@ aws ecr create-repository \
     --image-scanning-configuration scanOnPush=true
 
 # Get login token
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin <aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com
+aws ecr get-login-password --region eu-central-1 | podman login --username AWS --password-stdin <aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com
 ```
 
 ### 1.3 Push Image to ECR
 
 ```bash
 # Tag the image
-docker tag mean-reversion-bot:latest <aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com/mean-reversion-bot:latest
+podman tag mean-reversion-bot:latest <aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com/mean-reversion-bot:latest
 
 # Push to ECR
-docker push <aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com/mean-reversion-bot:latest
+podman push <aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com/mean-reversion-bot:latest
 ```
 
 ## Step 2: Create ECS Infrastructure
 
-### 2.1 Create ECS Cluster (EC2-based)
+### Choosing Your Launch Type: Fargate vs EC2
 
-For a Python server handling 15 requests per 5 minutes with Telegram notifications, EC2 t3.micro instances provide optimal cost-performance.
+> **2026 Update**: AWS Fargate pricing has become more competitive for small workloads. Consider your options:
+
+#### Fargate (Recommended for Small-Medium Workloads)
+
+**Pros:**
+- No server management required
+- Pay only for running tasks (per-second billing)
+- Automatic scaling and patching
+- Better for intermittent workloads
+- Easier setup and maintenance
+
+**Cons:**
+- Slightly higher cost for 24/7 workloads
+- Less control over underlying infrastructure
+
+**Best for:**
+- Getting started quickly
+- Intermittent or scheduled workloads
+- Teams without DevOps expertise
+- Development and testing environments
+
+**Pricing (2026 approximate):**
+- 0.25 vCPU, 0.5 GB RAM = ~$10-12/month (24/7)
+- With scheduled scaling: ~$5-8/month
+
+#### EC2 (Recommended for High-Volume or Cost-Sensitive 24/7 Workloads)
+
+**Pros:**
+- Lower cost for always-running tasks
+- More control over instance types
+- Can use Reserved Instances for savings
+- Better for predictable 24/7 workloads
+
+**Cons:**
+- Requires more management
+- Manual patching and updates
+- More complex setup
+
+**Best for:**
+- Cost-sensitive 24/7 operations
+- High-volume trading (100+ requests/minute)
+- Teams with DevOps experience
+- Production at scale
+
+**Pricing (2026 approximate):**
+- t3.micro: ~$7.50/month (24/7)
+- t4g.micro (ARM): ~$6/month (24/7)
+
+### Decision Matrix
+
+| Your Situation | Recommended |
+|----------------|-------------|
+| Just starting out | **Fargate** |
+| Development/Testing | **Fargate** |
+| Running 6-8 hours/day only | **Fargate** |
+| 24/7 operation, budget-conscious | **EC2** |
+| High-frequency trading (>100 req/min) | **EC2** |
+| No DevOps team | **Fargate** |
+| Want automatic scaling | **Fargate** |
+
+For this guide, we'll show **both options**. Choose the one that fits your needs.
+
+## Step 3: Create ECS Cluster
+
+### Option A: Fargate Cluster (Recommended for Most Users)
+
+#### Using AWS Console
+
+1. Navigate to **ECS Console** → **Clusters**
+2. Click **Create Cluster**
+3. **Cluster configuration**:
+   - **Cluster name**: `mean-reversion-cluster`
+   - **Infrastructure**: AWS Fargate (serverless)
+4. **Monitoring** (optional):
+   - Enable **Container Insights** for detailed metrics
+5. Click **Create**
+
+The cluster will be created in seconds. No EC2 instances to manage!
+
+### Option B: EC2 Cluster (For Cost-Sensitive 24/7 Operations)
 
 #### Using AWS Console
 
@@ -71,12 +150,12 @@ For a Python server handling 15 requests per 5 minutes with Telegram notificatio
 3. Choose **EC2 Linux + Networking**
 4. Configure cluster:
    - **Cluster name**: `mean-reversion-cluster`
-   - **EC2 instance type**: `t3.micro`
+   - **EC2 instance type**: `t3.micro` or `t4g.micro` (ARM, cheaper)
    - **Number of instances**: `1`
    - **VPC**: Use default or select existing
    - **Subnets**: Select at least 2 availability zones
    - **Auto assign public IP**: Enable
-   - **Security group**: Use default (will allow all outbound traffic)
+   - **Security group**: Use default (allows all outbound traffic)
 5. Click **Create**
 
 The cluster will automatically:
@@ -84,13 +163,36 @@ The cluster will automatically:
 - Set up Auto Scaling Group
 - Create security groups with proper outbound rules
 
+## Step 2.1: Create Security Group (If Not Using Default)
+
 ## Step 4: Create Task Definition
 
 ### 4.1 Create Task Definition using AWS Console
 
 1. Navigate to **ECS Console** → **Task Definitions**
 2. Click **Create new Task Definition**
-3. Choose **EC2** launch type
+3. **Choose launch type compatibility**:
+   - For **Fargate**: Select **Fargate**
+   - For **EC2**: Select **EC2**
+
+#### For Fargate Launch Type
+
+4. Configure task definition:
+   - **Task Definition Name**: `mean-reversion-bot`
+   - **Task Role**: Select `MeanReversionJobExecutionRole`
+   - **Network Mode**: `awsvpc` (default for Fargate)
+   - **Task execution role**: Select `ecsTaskExecutionRole`
+   - **Task memory (GB)**: `0.5` (512 MB)
+   - **Task CPU (vCPU)**: `0.25` (256 CPU units)
+
+5. Add Container:
+   - **Container name**: `mean-reversion-bot`
+   - **Image**: `<aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com/mean-reversion-bot:latest`
+   - **Memory Limits**: Soft limit `512` MiB
+   - **Port mappings**: Leave empty (no ports needed)
+
+#### For EC2 Launch Type
+
 4. Configure task definition:
    - **Task Definition Name**: `mean-reversion-bot`
    - **Network Mode**: `bridge`
@@ -102,6 +204,8 @@ The cluster will automatically:
    - **Image**: `<aws-account-id>.dkr.ecr.eu-central-1.amazonaws.com/mean-reversion-bot:latest`
    - **Memory Limits (MiB)**: Soft limit `512`
    - **Port mappings**: Leave empty (no ports needed)
+
+#### Common Configuration (Both Launch Types)
 
 6. Add Environment Variables:
    - `PYTHONUNBUFFERED` = `1`
@@ -143,27 +247,33 @@ aws logs put-retention-policy \
 1. Navigate to your **ECS Cluster** → `mean-reversion-cluster`
 2. Go to **Services** tab → Click **Create**
 3. Configure service:
-   - **Launch type**: `EC2`
+   - **Launch type**: Select **Fargate** or **EC2** (match your task definition)
    - **Task Definition**: Select `mean-reversion-bot:1`
    - **Cluster**: `mean-reversion-cluster`
    - **Service name**: `mean-reversion-bot-service`
    - **Service type**: `REPLICA`
    - **Number of tasks**: `1`
 
-4. **Deployments**:
+4. **Network Configuration** (Fargate only):
+   - **VPC**: Select your VPC
+   - **Subnets**: Select at least 2 subnets
+   - **Security groups**: Select security group with outbound access
+   - **Auto-assign public IP**: ENABLED
+
+5. **Deployments**:
    - **Minimum healthy percent**: `0`
    - **Maximum percent**: `100`
 
-5. **Task Placement**:
+6. **Task Placement** (EC2 only):
    - **Placement Templates**: `AZ Balanced Spread`
 
-6. **Load balancing**: Skip (not needed)
+7. **Load balancing**: Skip (not needed)
 
-7. **Service discovery**: Skip (not needed)
+8. **Service discovery**: Skip (not needed)
 
-8. **Auto Scaling**: We'll configure this separately
+9. **Auto Scaling**: We'll configure this separately
 
-9. Click **Create Service**
+10. Click **Create Service**
 
 ## Step 6: Configure Auto Scaling using AWS Console
 
@@ -260,15 +370,15 @@ REPOSITORY_NAME="mean-reversion-bot"
 echo "Starting ECS deployment..."
 
 # Build and push image
-echo "Building Docker image..."
-docker build -f Dockerfile.bot -t $REPOSITORY_NAME:latest .
+echo "Building Podman image..."
+podman build -f Dockerfile.bot -t $REPOSITORY_NAME:latest .
 
 echo "Tagging and pushing to ECR..."
-docker tag $REPOSITORY_NAME:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPOSITORY_NAME:latest
+podman tag $REPOSITORY_NAME:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPOSITORY_NAME:latest
 
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+aws ecr get-login-password --region $AWS_REGION | podman login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPOSITORY_NAME:latest
+podman push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPOSITORY_NAME:latest
 
 # Update service
 echo "Updating ECS service..."
@@ -327,46 +437,80 @@ aws ecs execute-command \
 
 ## Cost Optimization
 
-### 10.1 Fargate Spot vs EC2 t3.micro Cost Comparison
+### 10.1 2026 Cost Comparison
 
-For your low-traffic workload (15 requests per 5 minutes), EC2 t3.micro provides better cost efficiency:
+For your low-traffic workload (15 requests per 5 minutes):
 
+#### Fargate Pricing (0.25 vCPU, 0.5 GB RAM)
 ```bash
-# EC2 t3.micro pricing (approximate)
+# 24/7 operation
+# - Compute: $0.04048/hour = $29.15/month
+# - With 50% utilization (scheduled): ~$14.50/month
+# - With 33% utilization (8hrs/day): ~$9.70/month
+```
+
+#### EC2 t3.micro Pricing
+```bash
+# 24/7 operation
 # - Instance: $0.0104/hour = $7.50/month
 # - EBS storage: $0.10/GB/month (8GB = $0.80/month)
 # - Total: ~$8.30/month
-
-# Fargate pricing would be:
-# - 0.25 vCPU, 0.5 GB RAM = $0.04048/hour = $29.15/month
-# - Significantly more expensive for always-running tasks
 ```
 
-### 10.2 Scheduled Scaling for EC2
+#### EC2 t4g.micro (ARM) Pricing
+```bash
+# 24/7 operation (20% cheaper than t3)
+# - Instance: $0.0084/hour = $6.05/month
+# - EBS storage: $0.10/GB/month (8GB = $0.80/month)
+# - Total: ~$6.85/month
+```
+
+#### Recommendation by Use Case
+
+| Use Case | Best Option | Estimated Cost |
+|----------|-------------|----------------|
+| Getting Started / Testing | Fargate (scheduled) | $5-10/month |
+| Part-time Trading (8hrs/day) | Fargate | $9-12/month |
+| 24/7 Trading, Budget-focused | EC2 t4g.micro | $7/month |
+| 24/7 Trading, Ease-of-use | Fargate | $29/month |
+| High-frequency (>100 req/min) | EC2 t3.small | $15/month |
+
+### 10.2 Scheduled Scaling (Fargate or EC2)
 
 Scale down during non-trading hours to save costs:
 
 ```bash
 # Create scheduled scaling for night hours (scale to 0)
 aws application-autoscaling put-scheduled-action \
-    --service-namespace ecs \
-    --resource-id service/mean-reversion-cluster/mean-reversion-bot-service \
-    --scalable-dimension ecs:service:DesiredCount \
-    --scheduled-action-name scale-down-night \
-    --schedule "cron(0 18 * * ? *)" \
-    --scalable-target-action MinCapacity=0,MaxCapacity=0 \
-    --region eu-central-1
+  --service-namespace ecs \
+  --resource-id service/mean-reversion-cluster/mean-reversion-bot-service \
+  --scalable-dimension ecs:service:DesiredCount \
+  --scheduled-action-name scale-down-night \
+  --schedule "cron(0 18 * * ? *)" \
+  --scalable-target-action MinCapacity=0,MaxCapacity=0 \
+  --region eu-central-1
 
 # Scale up for trading hours (scale to 1)
 aws application-autoscaling put-scheduled-action \
-    --service-namespace ecs \
-    --resource-id service/mean-reversion-cluster/mean-reversion-bot-service \
-    --scalable-dimension ecs:service:DesiredCount \
-    --scheduled-action-name scale-up-morning \
-    --schedule "cron(0 6 * * ? *)" \
-    --scalable-target-action MinCapacity=1,MaxCapacity=1 \
-    --region eu-central-1
+  --service-namespace ecs \
+  --resource-id service/mean-reversion-cluster/mean-reversion-bot-service \
+  --scalable-dimension ecs:service:DesiredCount \
+  --scheduled-action-name scale-up-morning \
+  --schedule "cron(0 6 * * ? *)" \
+  --scalable-target-action MinCapacity=1,MaxCapacity=1 \
+  --region eu-central-1
 ```
+
+**Potential Savings**: 50-66% reduction in costs with scheduled scaling
+
+### 10.3 Additional Cost Optimization Tips
+
+1. **Use ARM (Graviton) instances**: 20% cheaper than x86 (EC2 only)
+2. **Enable Container Insights selectively**: Only when debugging
+3. **Use log retention**: Set CloudWatch log retention to 7-30 days
+4. **Rightsizing**: Start small (0.25 vCPU), scale up only if needed
+5. **Reserved Instances**: For long-term EC2 usage (save up to 40%)
+6. **Spot Instances**: For non-critical dev/test (save up to 70%)
 
 ## Troubleshooting
 

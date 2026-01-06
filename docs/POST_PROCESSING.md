@@ -168,11 +168,227 @@ Or use AWS Batch for distributed optimization (see [AWS Batch Setup](AWS_BATCH_S
 
 ### Step 2: Collect Results
 
-Download results from AWS S3 or collect from local `optimization/results/`:
+#### From Local Optimization
+
+If you ran optimizations locally:
 
 ```bash
-# If using AWS Batch
-aws s3 sync s3://your-bucket/optimization/results/ ./batch-analysis/
+# Results are already in the correct location
+ls -la optimization/results/
+```
+
+#### From AWS Batch
+
+If using AWS Batch for distributed optimization (see [AWS Batch Setup](AWS_BATCH_SETUP.md)):
+
+##### Download All Results from S3
+
+```bash
+# Create local results directory
+mkdir -p batch-results
+
+# Download all optimization results
+aws s3 sync s3://your-optimization-bucket/mean-reversion-strat/optimization/results/ ./batch-results/
+
+# List downloaded files
+ls -la batch-results/
+```
+
+##### Download Specific Results
+
+```bash
+# Download results from a specific date
+aws s3 cp s3://your-optimization-bucket/mean-reversion-strat/optimization/results/ ./batch-results/ \
+  --recursive --exclude "*" --include "*20250122*"
+
+# Download results for specific symbol
+aws s3 cp s3://your-optimization-bucket/mean-reversion-strat/optimization/results/ ./batch-results/ \
+  --recursive --exclude "*" --include "*EURUSD*"
+```
+
+##### Aggregate Results from Multiple CSV Files
+
+If you have multiple CSV files from different batch runs:
+
+**Simple Aggregation Script:**
+```bash
+#!/bin/bash
+# aggregate_results.sh - Combine multiple CSV files
+
+RESULTS_DIR="batch-results"
+OUTPUT_FILE="aggregated_results.csv"
+
+if [ ! -d "$RESULTS_DIR" ]; then
+  echo "Results directory not found. Download results first."
+  exit 1
+fi
+
+# Find first CSV file to get header
+FIRST_FILE=$(find "$RESULTS_DIR" -name "*.csv" | head -1)
+if [ -z "$FIRST_FILE" ]; then
+  echo "No CSV files found in $RESULTS_DIR"
+  exit 1
+fi
+
+# Create aggregated file with header
+head -1 "$FIRST_FILE" > "$OUTPUT_FILE"
+
+# Add filename column to header
+sed -i '' '1s/$/,source_file/' "$OUTPUT_FILE"
+
+# Append all CSV data (without headers) and add filename
+for file in "$RESULTS_DIR"/*.csv; do
+  if [ -f "$file" ]; then
+    filename=$(basename "$file")
+    tail -n +2 "$file" | sed "s/$/,$filename/" >> "$OUTPUT_FILE"
+  fi
+done
+
+echo "Aggregated $(wc -l < "$OUTPUT_FILE") optimization runs to $OUTPUT_FILE"
+```
+
+**Usage:**
+```bash
+chmod +x aggregate_results.sh
+./aggregate_results.sh
+```
+
+##### Python Analysis Script for AWS Batch Results
+
+```python
+#!/usr/bin/env python3
+"""
+Analyze aggregated AWS Batch optimization results
+"""
+import pandas as pd
+import json
+from pathlib import Path
+
+def analyze_batch_results(csv_file='aggregated_results.csv'):
+    """Analyze aggregated optimization results from AWS Batch"""
+    
+    if not Path(csv_file).exists():
+        print(f"File {csv_file} not found")
+        return
+    
+    # Load data
+    df = pd.read_csv(csv_file)
+    print(f"Loaded {len(df)} optimization runs")
+    
+    # Extract symbol from parameters or filename
+    def extract_symbol(row):
+        try:
+            if 'parameters' in row and pd.notna(row['parameters']):
+                params = eval(row['parameters'])
+                return params.get('symbol', 'Unknown')
+            elif 'source_file' in row:
+                # Try to extract from filename
+                filename = row['source_file']
+                for symbol in ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'BTCUSD', 'ETHUSD']:
+                    if symbol in filename:
+                        return symbol
+            return 'Unknown'
+        except:
+            return 'Unknown'
+    
+    df['symbol'] = df.apply(extract_symbol, axis=1)
+    
+    # Overall statistics
+    print("\n=== OVERALL STATISTICS ===")
+    print(f"Total optimizations: {len(df):,}")
+    print(f"Unique symbols: {df['symbol'].nunique()}")
+    print(f"Average PnL: ${df['final_pnl'].mean():,.2f}")
+    print(f"Median PnL: ${df['final_pnl'].median():,.2f}")
+    print(f"Best PnL: ${df['final_pnl'].max():,.2f}")
+    print(f"Worst PnL: ${df['final_pnl'].min():,.2f}")
+    
+    if 'sharpe_ratio' in df.columns:
+        print(f"Average Sharpe: {df['sharpe_ratio'].mean():.2f}")
+        print(f"Best Sharpe: {df['sharpe_ratio'].max():.2f}")
+    
+    # Best results by symbol
+    print("\n=== BEST RESULTS BY SYMBOL ===")
+    symbol_results = {}
+    
+    for symbol in df['symbol'].unique():
+        if symbol == 'Unknown':
+            continue
+            
+        symbol_data = df[df['symbol'] == symbol]
+        best_idx = symbol_data['final_pnl'].idxmax()
+        best_result = symbol_data.loc[best_idx]
+        
+        symbol_results[symbol] = {
+            'total_tests': len(symbol_data),
+            'best_pnl': float(best_result['final_pnl']),
+            'best_sharpe': float(best_result.get('sharpe_ratio', 0)),
+            'best_win_rate': float(best_result.get('win_rate', 0))
+        }
+        
+        print(f"{symbol:10} | Tests: {len(symbol_data):3d} | "
+              f"Best PnL: ${best_result['final_pnl']:8,.2f} | "
+              f"Sharpe: {best_result.get('sharpe_ratio', 0):5.2f}")
+    
+    # Top 10 performers
+    print("\n=== TOP 10 PERFORMERS ===")
+    top_10 = df.nlargest(10, 'final_pnl')
+    
+    for i, (_, row) in enumerate(top_10.iterrows(), 1):
+        print(f"{i:2d}. {row['symbol']:10} | PnL: ${row['final_pnl']:8,.2f} | "
+              f"Sharpe: {row.get('sharpe_ratio', 0):5.2f} | "
+              f"Win Rate: {row.get('win_rate', 0):5.1%}")
+    
+    # Save analysis
+    analysis = {
+        'summary': {
+            'total_optimizations': len(df),
+            'unique_symbols': df['symbol'].nunique(),
+            'avg_pnl': float(df['final_pnl'].mean()),
+            'median_pnl': float(df['final_pnl'].median()),
+            'best_pnl': float(df['final_pnl'].max()),
+            'worst_pnl': float(df['final_pnl'].min())
+        },
+        'by_symbol': symbol_results
+    }
+    
+    with open('batch_optimization_analysis.json', 'w') as f:
+        json.dump(analysis, f, indent=2)
+    
+    print(f"\nAnalysis saved to batch_optimization_analysis.json")
+
+if __name__ == '__main__':
+    analyze_batch_results()
+```
+
+**Save as:** `post-processing/analyze_aws_batch.py`
+
+**Usage:**
+```bash
+# After aggregating CSV files
+python3 post-processing/analyze_aws_batch.py
+
+# Or specify custom file
+python3 -c "
+from analyze_aws_batch import analyze_batch_results
+analyze_batch_results('my_results.csv')
+"
+```
+
+##### Quick Analysis Commands
+
+```bash
+# View top performers
+head -20 aggregated_results.csv | column -t -s','
+
+# Filter by symbol
+grep "EURUSD" aggregated_results.csv | sort -t',' -k2 -nr | head -5
+
+# Get summary statistics
+python3 -c "
+import pandas as pd
+df = pd.read_csv('aggregated_results.csv')
+print(df.describe())
+"
 ```
 
 ### Step 3: Analyze Results

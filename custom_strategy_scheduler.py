@@ -2,6 +2,9 @@
 """
 Custom Strategy Scheduler for Live Trading
 
+⚠️  DEPRECATED: This scheduler is deprecated and kept for reference only.
+⚠️  Please use unified_bot.py instead, which runs multiple strategies in parallel.
+
 This script runs custom signal detection strategies (e.g., AsiaSessionSweepDetector) 
 live on multiple symbols every 5 minutes. It operates independently from the mean 
 reversion scheduler and uses its own configuration format.
@@ -13,6 +16,9 @@ Features:
 - Real-time logging and monitoring
 - Telegram notifications for signals (reuses telegram bot components)
 - Signal caching to prevent duplicate notifications
+
+MIGRATION: Use unified_bot.py with bot_config.json to run both mean reversion 
+and custom strategies in parallel with better error isolation.
 """
 
 import time
