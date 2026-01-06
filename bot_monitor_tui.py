@@ -18,7 +18,8 @@ from typing import Dict, List, Any, Optional
 import psutil
 import humanize
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, VerticalScroll
+from textual.widget import Widget
 from textual.widgets import Header, Footer, Static, DataTable, RichLog, TabbedContent, TabPane, Label
 from textual.reactive import reactive
 from textual import work
@@ -28,13 +29,29 @@ from rich.text import Text
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.bot.telemetry import TelemetryCollector
+from src.bot.telemetry import TelemetryFileReader
 
 logger = logging.getLogger(__name__)
 
 
-class BotStatusPanel(Static):
+class BotStatusPanel(Widget):
     """Widget displaying bot status information"""
+    
+    DEFAULT_CSS = """
+    BotStatusPanel {
+        height: auto;
+        border: solid $primary;
+        padding: 1;
+    }
+    
+    BotStatusPanel Static {
+        margin: 0 1;
+    }
+    
+    BotStatusPanel .status-label {
+        color: $text-muted;
+    }
+    """
     
     uptime = reactive("")
     next_cycle = reactive("")
@@ -44,22 +61,56 @@ class BotStatusPanel(Static):
     last_cycle_duration = reactive("N/A")
     
     def compose(self) -> ComposeResult:
-        yield Static("╭──────────────────── Bot Status ─────────────────────╮", classes="border-top")
+        yield Static("Bot Status", classes="status-label")
         yield Static(f"Uptime: {self.uptime}", id="uptime")
         yield Static(f"Next Cycle: {self.next_cycle}", id="next-cycle")
         yield Static(f"Trading Hours: {self.trading_hours_status}", id="trading-hours")
         yield Static(f"Active Strategies: {self.active_strategies}", id="active-strategies")
         yield Static(f"Last Cycle: {self.last_cycle_status}", id="last-cycle-status")
-        yield Static("╰──────────────────────────────────────────────────────╯", classes="border-bottom")
     
-    def update_status(self, telemetry: TelemetryCollector, bot_start_time: datetime):
+    def update_status(self, telemetry: TelemetryFileReader, bot_start_time: Optional[datetime] = None):
         """Update bot status from telemetry"""
-        # Calculate uptime
+        # Read state from file
+        state = telemetry.read_state()
+        
+        # Calculate uptime from state if bot_start_time not provided
+        if bot_start_time is None:
+            bot_start_str = state.get('bot_start_time')
+            if bot_start_str:
+                try:
+                    bot_start_time = datetime.fromisoformat(bot_start_str.replace('Z', '+00:00'))
+                except:
+                    bot_start_time = datetime.now(timezone.utc)
+            else:
+                bot_start_time = datetime.now(timezone.utc)
+        
         uptime_delta = datetime.now(timezone.utc) - bot_start_time
         days = uptime_delta.days
         hours, remainder = divmod(uptime_delta.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         self.uptime = f"{days}d {hours}h {minutes}m {seconds}s"
+        
+        # Get next cycle time and calculate countdown
+        next_cycle_str = state.get('next_cycle_time')
+        if next_cycle_str:
+            try:
+                next_cycle_time = datetime.fromisoformat(next_cycle_str.replace('Z', '+00:00'))
+                time_until = next_cycle_time - datetime.now(timezone.utc)
+                
+                if time_until.total_seconds() > 0:
+                    minutes_until = int(time_until.total_seconds() // 60)
+                    seconds_until = int(time_until.total_seconds() % 60)
+                    self.next_cycle = f"in {minutes_until}m {seconds_until}s"
+                else:
+                    self.next_cycle = "Running now..."
+            except:
+                self.next_cycle = "N/A"
+        else:
+            self.next_cycle = "N/A"
+        
+        # Get trading hours status
+        trading_active = state.get('trading_hours_active', False)
+        self.trading_hours_status = "✅ Active" if trading_active else "⏸️  Inactive"
         
         # Get active strategies
         active = telemetry.get_gauge('strategies.active')
@@ -68,7 +119,7 @@ class BotStatusPanel(Static):
         # Get last cycle info
         recent_cycles = telemetry.get_recent_cycles(1)
         if recent_cycles:
-            cycle = recent_cycles[-1]
+            cycle = recent_cycles[0]  # Most recent is first
             duration = cycle.get('duration', 0)
             self.last_cycle_duration = f"{duration:.1f}s"
             
@@ -87,19 +138,34 @@ class BotStatusPanel(Static):
         self.query_one("#last-cycle-status", Static).update(f"Last Cycle: {self.last_cycle_status}")
 
 
-class SystemMetricsPanel(Static):
+class SystemMetricsPanel(Widget):
     """Widget displaying system metrics"""
+    
+    DEFAULT_CSS = """
+    SystemMetricsPanel {
+        height: auto;
+        border: solid $primary;
+        padding: 1;
+    }
+    
+    SystemMetricsPanel Static {
+        margin: 0 1;
+    }
+    
+    SystemMetricsPanel .metrics-title {
+        color: $text-muted;
+    }
+    """
     
     cpu_percent = reactive(0.0)
     memory_used = reactive("0 MB")
     memory_percent = reactive(0.0)
     
     def compose(self) -> ComposeResult:
-        yield Static("╭─── System ────╮", classes="border-top")
+        yield Static("System", classes="metrics-title")
         yield Static(f"CPU: {self.cpu_percent:.1f}%", id="cpu")
         yield Static(f"MEM: {self.memory_used}", id="memory")
         yield Static(f"     ({self.memory_percent:.1f}%)", id="memory-percent")
-        yield Static("╰───────────────╯", classes="border-bottom")
     
     def update_metrics(self):
         """Update system metrics"""
@@ -127,12 +193,35 @@ class SystemMetricsPanel(Static):
             logger.error(f"Error updating system metrics: {e}")
 
 
-class SignalHistoryTable(Static):
+class SignalHistoryTable(Widget):
     """Widget displaying recent trading signals"""
+    
+    DEFAULT_CSS = """
+    SignalHistoryTable {
+        height: auto;
+        border: solid $primary;
+        padding: 1;
+    }
+    
+    SignalHistoryTable .section-title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    SignalHistoryTable VerticalScroll {
+        height: 15;
+    }
+    
+    SignalHistoryTable DataTable {
+        height: auto;
+    }
+    """
     
     def compose(self) -> ComposeResult:
         yield Static("Recent Signals:", classes="section-title")
-        yield DataTable(id="signals-table")
+        with VerticalScroll():
+            yield DataTable(id="signals-table")
     
     def on_mount(self) -> None:
         """Initialize the data table"""
@@ -140,13 +229,14 @@ class SignalHistoryTable(Static):
         table.add_columns("Time", "Symbol", "Type", "Entry", "Strategy", "Status")
         table.cursor_type = "row"
     
-    def update_signals(self, telemetry: TelemetryCollector):
+    def update_signals(self, telemetry: TelemetryFileReader):
         """Update signal history"""
         table = self.query_one("#signals-table", DataTable)
         table.clear()
         
+        # Signals are already in reverse chronological order (newest first) from file reader
         signals = telemetry.get_recent_signals(20)
-        for signal in reversed(signals):  # Show most recent first
+        for signal in signals:  # Already sorted newest first
             try:
                 timestamp = signal.get('timestamp', '')
                 if isinstance(timestamp, str):
@@ -182,13 +272,37 @@ class SignalHistoryTable(Static):
                 logger.error(f"Error adding signal row: {e}")
 
 
-class LiveLogViewer(Static):
+class LiveLogViewer(Widget):
     """Widget for displaying live log output"""
     
+    DEFAULT_CSS = """
+    LiveLogViewer {
+        height: auto;
+        border: solid $primary;
+        padding: 1;
+    }
+    
+    LiveLogViewer .log-title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    LiveLogViewer VerticalScroll {
+        height: 12;
+        border: none;
+    }
+    
+    LiveLogViewer RichLog {
+        height: auto;
+        background: $surface;
+    }
+    """
+    
     def compose(self) -> ComposeResult:
-        yield Static("╭──────────────────────────── Live Log ───────────────────────────────╮", classes="border-top")
-        yield RichLog(id="live-log", wrap=True, highlight=True, markup=True)
-        yield Static("╰─────────────────────────────────────────────────────────────────────╯", classes="border-bottom")
+        yield Static("Live Log", classes="log-title")
+        with VerticalScroll():
+            yield RichLog(id="live-log", wrap=True, highlight=True, markup=True)
     
     def on_mount(self) -> None:
         """Initialize log viewer"""
@@ -215,17 +329,39 @@ class LiveLogViewer(Static):
         log.write(f"{prefix} {message}")
 
 
-class StrategyMetricsPanel(Static):
+class StrategyMetricsPanel(Widget):
     """Panel showing strategy-specific metrics"""
     
-    def compose(self) -> ComposeResult:
-        yield Static("╭────────────────────────── Strategy Performance ──────────────────────────╮", classes="border-top")
-        yield Static("Strategy: All Strategies 📊", id="strategy-header")
-        yield Static("", id="strategy-status")
-        yield Static("", id="signal-summary")
-        yield Static("╰──────────────────────────────────────────────────────────────────────────╯", classes="border-bottom")
+    DEFAULT_CSS = """
+    StrategyMetricsPanel {
+        height: auto;
+        border: solid $primary;
+        padding: 1;
+    }
     
-    def update_metrics(self, telemetry: TelemetryCollector):
+    StrategyMetricsPanel .strategy-title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    StrategyMetricsPanel Static {
+        margin: 0 1;
+    }
+    
+    StrategyMetricsPanel VerticalScroll {
+        height: 8;
+    }
+    """
+    
+    def compose(self) -> ComposeResult:
+        yield Static("Strategy Performance 📊", classes="strategy-title")
+        with VerticalScroll():
+            yield Static("Strategy: All Strategies", id="strategy-header")
+            yield Static("", id="strategy-status")
+            yield Static("", id="signal-summary")
+    
+    def update_metrics(self, telemetry: TelemetryFileReader):
         """Update strategy metrics"""
         # Get signal counts
         long_signals = telemetry.get_counter('signals.long')
@@ -266,55 +402,37 @@ class BotMonitorApp(App):
         background: $surface;
     }
     
-    .border-top {
-        color: $accent;
-        text-style: bold;
+    Horizontal {
+        height: auto;
+        margin: 1 2;
     }
     
-    .border-bottom {
-        color: $accent;
-        text-style: bold;
-    }
-    
-    .section-title {
-        color: $secondary;
-        text-style: bold;
-        margin: 1 0;
+    Vertical {
+        height: auto;
+        margin: 0;
     }
     
     #bot-status-container {
-        height: 10;
-        margin: 1 2;
+        width: 2fr;
     }
     
     #system-metrics-container {
-        height: 10;
-        margin: 1 2;
+        width: 1fr;
     }
     
     #strategy-metrics-container {
-        height: 12;
         margin: 1 2;
+        height: auto;
     }
     
     #signals-table-container {
-        height: 20;
         margin: 1 2;
+        height: auto;
     }
     
     #live-log-container {
-        height: 15;
         margin: 1 2;
-    }
-    
-    DataTable {
-        height: 100%;
-    }
-    
-    RichLog {
-        height: 11;
-        border: solid $accent;
-        background: $surface;
+        height: auto;
     }
     """
     
@@ -329,7 +447,7 @@ class BotMonitorApp(App):
     
     def __init__(self):
         super().__init__()
-        self.telemetry = TelemetryCollector.instance()
+        self.telemetry = TelemetryFileReader('telemetry_data')
         self.bot_start_time = datetime.now(timezone.utc)
         self.refresh_interval = 1  # seconds
     
@@ -366,9 +484,13 @@ class BotMonitorApp(App):
     def update_dashboard(self) -> None:
         """Update all dashboard components"""
         try:
+            # Check if telemetry has updates before refreshing
+            if not self.telemetry.has_updates():
+                return  # Skip update if no new data
+            
             # Update bot status
             bot_status = self.query_one("#bot-status", BotStatusPanel)
-            bot_status.update_status(self.telemetry, self.bot_start_time)
+            bot_status.update_status(self.telemetry, None)  # None = read from state file
             
             # Update system metrics
             system_metrics = self.query_one("#system-metrics", SystemMetricsPanel)
@@ -396,12 +518,20 @@ class BotMonitorApp(App):
     def action_export(self) -> None:
         """Export telemetry data"""
         try:
+            import json
+            import shutil
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            filename = f"telemetry_export_{timestamp}.json"
+            export_dir = Path(f"telemetry_export_{timestamp}")
             
-            if self.telemetry.export_to_json(filename):
+            # Copy entire telemetry directory
+            telemetry_path = Path('telemetry_data')
+            if telemetry_path.exists():
+                shutil.copytree(telemetry_path, export_dir)
                 log_viewer = self.query_one("#live-log", LiveLogViewer)
-                log_viewer.add_log(f"Data exported to {filename}", "SUCCESS")
+                log_viewer.add_log(f"Data exported to {export_dir}/", "SUCCESS")
+            else:
+                log_viewer = self.query_one("#live-log", LiveLogViewer)
+                log_viewer.add_log("No telemetry data found", "ERROR")
         except Exception as e:
             log_viewer = self.query_one("#live-log", LiveLogViewer)
             log_viewer.add_log(f"Export failed: {e}", "ERROR")

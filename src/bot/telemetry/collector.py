@@ -3,7 +3,7 @@
 Telemetry Collector
 
 Central singleton for collecting and managing telemetry data from the trading bot.
-Thread-safe implementation with ring buffer for time-series data.
+Thread-safe implementation with file-based persistence for inter-process communication.
 """
 
 import json
@@ -15,6 +15,13 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Deque
 
 from .metrics import Counter, Gauge, Histogram, Timer, MetricType
+from .file_utils import (
+    atomic_write_json,
+    ensure_telemetry_structure,
+    generate_timestamped_filename,
+    rotate_files,
+    get_file_mtime
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +58,7 @@ class TelemetryCollector:
         self._initialized = True
         self._lock = threading.Lock()
         
-        # Metrics storage
+        # Metrics storage (in-memory for fast access)
         self.counters: Dict[str, Counter] = {}
         self.gauges: Dict[str, Gauge] = {}
         self.histograms: Dict[str, Histogram] = {}
@@ -74,6 +81,25 @@ class TelemetryCollector:
         self.persistence_path: Optional[Path] = None
         self.last_persistence = datetime.now(timezone.utc)
         
+        # File-based telemetry paths
+        self.telemetry_base_path: Optional[Path] = None
+        self.metrics_file: Optional[Path] = None
+        self.state_file: Optional[Path] = None
+        self.manifest_file: Optional[Path] = None
+        
+        # Bot state for file-based telemetry
+        self.bot_start_time: Optional[datetime] = None
+        self.next_cycle_time: Optional[datetime] = None
+        self.run_interval_minutes: int = 5
+        self.sync_second: int = 15
+        self.is_running: bool = False
+        self.trading_hours_active: bool = False
+        
+        # Retention limits
+        self.max_signals = 500
+        self.max_cycles = 100
+        self.max_errors = 200
+        
         logger.info("Telemetry collector initialized")
     
     @classmethod
@@ -87,13 +113,61 @@ class TelemetryCollector:
         
         Args:
             enabled: Enable/disable telemetry collection
-            persistence_path: Path for persisting telemetry data
+            persistence_path: Path for persisting telemetry data (file-based storage)
         """
         self.enabled = enabled
         if persistence_path:
-            self.persistence_path = Path(persistence_path)
-            self.persistence_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Telemetry persistence enabled: {self.persistence_path}")
+            self.telemetry_base_path = Path(persistence_path)
+            self.persistence_path = self.telemetry_base_path  # Backward compatibility
+            
+            # Set up file paths
+            self.metrics_file = self.telemetry_base_path / 'metrics.json'
+            self.state_file = self.telemetry_base_path / 'state.json'
+            self.manifest_file = self.telemetry_base_path / 'manifest.json'
+            
+            # Ensure directory structure exists
+            ensure_telemetry_structure(self.telemetry_base_path)
+            
+            logger.info(f"Telemetry file-based persistence enabled: {self.telemetry_base_path}")
+    
+    def set_bot_state(self, bot_start_time: datetime, run_interval_minutes: int, 
+                     sync_second: int, is_running: bool = True):
+        """
+        Set bot state information for file-based telemetry
+        
+        Args:
+            bot_start_time: When the bot started
+            run_interval_minutes: Interval between bot cycles
+            sync_second: Second of the minute to sync to
+            is_running: Whether bot is currently running
+        """
+        self.bot_start_time = bot_start_time
+        self.run_interval_minutes = run_interval_minutes
+        self.sync_second = sync_second
+        self.is_running = is_running
+        
+        # Write initial state
+        self._write_state()
+    
+    def set_next_cycle_time(self, next_cycle_time: datetime):
+        """
+        Set the next cycle time
+        
+        Args:
+            next_cycle_time: When the next cycle will run
+        """
+        self.next_cycle_time = next_cycle_time
+        self._write_state()
+    
+    def set_trading_hours_active(self, active: bool):
+        """
+        Set trading hours status
+        
+        Args:
+            active: Whether currently in trading hours
+        """
+        self.trading_hours_active = active
+        self._write_state()
     
     # ========== Counter Methods ==========
     
@@ -116,6 +190,9 @@ class TelemetryCollector:
                 self.counters[key] = Counter(name, tags=tags)
             
             self.counters[key].increment(amount)
+        
+        # Write metrics to file
+        self._write_metrics()
     
     def get_counter(self, name: str, **tags) -> float:
         """Get current counter value"""
@@ -146,6 +223,9 @@ class TelemetryCollector:
                 self.gauges[key] = Gauge(name, tags=tags)
             
             self.gauges[key].set(value)
+        
+        # Write metrics to file
+        self._write_metrics()
     
     def get_gauge(self, name: str, **tags) -> float:
         """Get current gauge value"""
@@ -249,6 +329,9 @@ class TelemetryCollector:
         
         with self._lock:
             self.signals.append(signal)
+        
+        # Write signal to file
+        self._write_signal_file(signal)
     
     def record_cycle(self, cycle_data: Dict[str, Any]):
         """Record a strategy cycle completion"""
@@ -262,6 +345,10 @@ class TelemetryCollector:
         
         with self._lock:
             self.cycles.append(cycle)
+        
+        # Write cycle to file and update state
+        self._write_cycle_file(cycle)
+        self._write_state()
     
     def record_error(self, error_type: str, error_message: str, context: Optional[Dict[str, Any]] = None):
         """Record an error"""
@@ -277,6 +364,9 @@ class TelemetryCollector:
         
         with self._lock:
             self.errors.append(error)
+        
+        # Write error to file
+        self._write_error_file(error)
     
     # ========== Data Retrieval ==========
     
@@ -327,6 +417,144 @@ class TelemetryCollector:
             }
     
     # ========== Persistence ==========
+    
+    def _write_metrics(self):
+        """Write metrics to metrics.json file"""
+        if not self.telemetry_base_path or not self.metrics_file:
+            return
+        
+        try:
+            with self._lock:
+                data = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'counters': {k: c.to_dict() for k, c in self.counters.items()},
+                    'gauges': {k: g.to_dict() for k, g in self.gauges.items()},
+                    'histograms': {k: h.to_dict() for k, h in self.histograms.items()},
+                    'timers': {k: t.to_dict() for k, t in self.timers.items()},
+                }
+            
+            atomic_write_json(self.metrics_file, data, compress=False)
+            self._update_manifest()
+            
+        except Exception as e:
+            logger.error(f"Failed to write metrics: {e}")
+    
+    def _write_state(self):
+        """Write bot state to state.json file"""
+        if not self.telemetry_base_path or not self.state_file:
+            return
+        
+        try:
+            data = {
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'bot_start_time': self.bot_start_time.isoformat() if self.bot_start_time else None,
+                'next_cycle_time': self.next_cycle_time.isoformat() if self.next_cycle_time else None,
+                'last_cycle_time': self.cycles[-1].get('timestamp') if self.cycles else None,
+                'is_running': self.is_running,
+                'trading_hours_active': self.trading_hours_active,
+                'run_interval_minutes': self.run_interval_minutes,
+                'sync_second': self.sync_second
+            }
+            
+            atomic_write_json(self.state_file, data, compress=False)
+            self._update_manifest()
+            
+        except Exception as e:
+            logger.error(f"Failed to write state: {e}")
+    
+    def _write_signal_file(self, signal_data: Dict[str, Any]):
+        """Write individual signal to file"""
+        if not self.telemetry_base_path:
+            return
+        
+        try:
+            signals_dir = self.telemetry_base_path / 'signals'
+            filename = generate_timestamped_filename('signal')
+            filepath = signals_dir / filename
+            
+            atomic_write_json(filepath, signal_data, compress=False)
+            
+            # Rotate old signal files
+            rotate_files(signals_dir, 'signal_*.json', self.max_signals, compress_old=True)
+            self._update_manifest()
+            
+        except Exception as e:
+            logger.error(f"Failed to write signal file: {e}")
+    
+    def _write_cycle_file(self, cycle_data: Dict[str, Any]):
+        """Write individual cycle to file"""
+        if not self.telemetry_base_path:
+            return
+        
+        try:
+            cycles_dir = self.telemetry_base_path / 'cycles'
+            filename = generate_timestamped_filename('cycle')
+            filepath = cycles_dir / filename
+            
+            atomic_write_json(filepath, cycle_data, compress=False)
+            
+            # Rotate old cycle files
+            rotate_files(cycles_dir, 'cycle_*.json', self.max_cycles, compress_old=True)
+            self._update_manifest()
+            
+        except Exception as e:
+            logger.error(f"Failed to write cycle file: {e}")
+    
+    def _write_error_file(self, error_data: Dict[str, Any]):
+        """Write individual error to file"""
+        if not self.telemetry_base_path:
+            return
+        
+        try:
+            errors_dir = self.telemetry_base_path / 'errors'
+            filename = generate_timestamped_filename('error')
+            filepath = errors_dir / filename
+            
+            atomic_write_json(filepath, error_data, compress=False)
+            
+            # Rotate old error files
+            rotate_files(errors_dir, 'error_*.json', self.max_errors, compress_old=True)
+            self._update_manifest()
+            
+        except Exception as e:
+            logger.error(f"Failed to write error file: {e}")
+    
+    def _update_manifest(self):
+        """Update manifest.json with current state"""
+        if not self.telemetry_base_path or not self.manifest_file:
+            return
+        
+        try:
+            signals_dir = self.telemetry_base_path / 'signals'
+            cycles_dir = self.telemetry_base_path / 'cycles'
+            errors_dir = self.telemetry_base_path / 'errors'
+            
+            # Count files in each directory
+            signal_files = list(signals_dir.glob('signal_*.json*')) if signals_dir.exists() else []
+            cycle_files = list(cycles_dir.glob('cycle_*.json*')) if cycles_dir.exists() else []
+            error_files = list(errors_dir.glob('error_*.json*')) if errors_dir.exists() else []
+            
+            # Get latest files (sorted by mtime)
+            latest_signals = sorted(signal_files, key=lambda f: f.stat().st_mtime, reverse=True)[:10]
+            latest_cycles = sorted(cycle_files, key=lambda f: f.stat().st_mtime, reverse=True)[:10]
+            latest_errors = sorted(error_files, key=lambda f: f.stat().st_mtime, reverse=True)[:10]
+            
+            manifest_data = {
+                'last_updated': datetime.now(timezone.utc).isoformat(),
+                'metrics_mtime': get_file_mtime(self.metrics_file) if self.metrics_file else 0,
+                'state_mtime': get_file_mtime(self.state_file) if self.state_file else 0,
+                'signal_count': len(signal_files),
+                'cycle_count': len(cycle_files),
+                'error_count': len(error_files),
+                'latest_signals': [f.name for f in latest_signals],
+                'latest_cycles': [f.name for f in latest_cycles],
+                'latest_errors': [f.name for f in latest_errors]
+            }
+            
+            atomic_write_json(self.manifest_file, manifest_data, compress=False)
+            
+        except Exception as e:
+            logger.error(f"Failed to update manifest: {e}")
     
     def persist(self, force: bool = False):
         """

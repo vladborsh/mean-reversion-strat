@@ -7,6 +7,7 @@ for the unified trading bot.
 """
 
 from .collector import TelemetryCollector
+from .file_reader import TelemetryFileReader
 from .metrics import MetricType, Metric
 
-__all__ = ['TelemetryCollector', 'MetricType', 'Metric']
+__all__ = ['TelemetryCollector', 'TelemetryFileReader', 'MetricType', 'Metric']

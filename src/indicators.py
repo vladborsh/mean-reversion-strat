@@ -158,12 +158,9 @@ class Indicators:
         has_volume = 'volume' in df.columns and (df['volume'] > 0).any()
         
         if has_volume:
-            print("Using volume-weighted VWAP calculation")
             # Use standard VWAP calculation
             return Indicators.vwap_daily_reset(df, num_std, anchor_period)
         else:
-            print("Volume data unavailable or zero - using typical price moving average with daily reset")
-            
             # Create grouping key based on anchor period
             def _get_period_key(timestamp):
                 if anchor_period == 'day':

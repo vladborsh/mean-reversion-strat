@@ -509,6 +509,18 @@ class BotOrchestrator:
         
         self.running = True
         
+        # Initialize telemetry with bot state
+        if self.telemetry:
+            bot_start_time = datetime.now(timezone.utc)
+            self.telemetry.set_bot_state(
+                bot_start_time=bot_start_time,
+                run_interval_minutes=run_interval,
+                sync_second=sync_second,
+                is_running=True
+            )
+            # Set trading hours status
+            self.telemetry.set_trading_hours_active(self._validate_trading_hours())
+        
         try:
             # Run initial cycle if within trading hours
             if self._validate_trading_hours():
@@ -529,6 +541,22 @@ class BotOrchestrator:
                         if self._validate_trading_hours():
                             await self.run_strategy_cycle()
                             last_run_minute = current_minute
+                            
+                            # Update next cycle time in telemetry after successful run
+                            if self.telemetry:
+                                # Calculate next cycle time
+                                next_run_minute = ((current_minute // run_interval) + 1) * run_interval
+                                if next_run_minute >= 60:
+                                    next_run_minute = 0
+                                    next_hour = current_time.hour + 1
+                                else:
+                                    next_hour = current_time.hour
+                                
+                                next_run_time = current_time.replace(hour=next_hour % 24, minute=next_run_minute, second=sync_second, microsecond=0)
+                                if next_run_time <= current_time:
+                                    next_run_time += timedelta(hours=1)
+                                
+                                self.telemetry.set_next_cycle_time(next_run_time)
                         else:
                             last_run_minute = current_minute
                         
@@ -544,7 +572,7 @@ class BotOrchestrator:
                             else:
                                 next_hour = current_time.hour
                             
-                            next_run_time = current_time.replace(hour=next_hour % 24, minute=next_run_minute, second=0, microsecond=0)
+                            next_run_time = current_time.replace(hour=next_hour % 24, minute=next_run_minute, second=sync_second, microsecond=0)
                             if next_run_time <= current_time:
                                 next_run_time += timedelta(hours=1)
                             
@@ -553,6 +581,11 @@ class BotOrchestrator:
                             seconds_until = int(time_until_run.total_seconds() % 60)
                             
                             logger.debug(f"⏰ Next run in {minutes_until:02d}:{seconds_until:02d} at {next_run_time.strftime('%H:%M')} UTC")
+                            
+                            # Update telemetry with next cycle time
+                            if self.telemetry:
+                                self.telemetry.set_next_cycle_time(next_run_time)
+                                self.telemetry.set_trading_hours_active(self._validate_trading_hours())
                         
                         await asyncio.sleep(1)
                     
