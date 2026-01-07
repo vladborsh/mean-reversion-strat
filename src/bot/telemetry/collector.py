@@ -131,7 +131,7 @@ class TelemetryCollector:
             logger.info(f"Telemetry file-based persistence enabled: {self.telemetry_base_path}")
     
     def set_bot_state(self, bot_start_time: datetime, run_interval_minutes: int, 
-                     sync_second: int, is_running: bool = True):
+                     sync_second: int, is_running: bool = True, reset_session_metrics: bool = True):
         """
         Set bot state information for file-based telemetry
         
@@ -140,11 +140,25 @@ class TelemetryCollector:
             run_interval_minutes: Interval between bot cycles
             sync_second: Second of the minute to sync to
             is_running: Whether bot is currently running
+            reset_session_metrics: Whether to reset session counters on startup
         """
         self.bot_start_time = bot_start_time
         self.run_interval_minutes = run_interval_minutes
         self.sync_second = sync_second
         self.is_running = is_running
+        
+        # Reset session metrics if requested
+        if reset_session_metrics:
+            logger.info("Resetting session metrics for new bot run")
+            with self._lock:
+                # Clear in-memory metrics but preserve structure
+                self.counters.clear()
+                self.gauges.clear()
+                self.histograms.clear()
+                self.timers.clear()
+            
+            # Write empty metrics to file
+            self._write_metrics()
         
         # Write initial state
         self._write_state()

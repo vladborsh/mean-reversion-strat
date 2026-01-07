@@ -172,6 +172,11 @@ class BotConfigLoader:
             return persistence.get('output_path', 'telemetry_data/')
         return None
     
+    def should_reset_telemetry_on_startup(self) -> bool:
+        """Check if telemetry should be reset on bot startup"""
+        telemetry = self.config.get('telemetry', {})
+        return telemetry.get('reset_on_startup', True)
+    
     def get_tui_monitor_config(self) -> Dict[str, Any]:
         """Get TUI monitor configuration"""
         return self.config.get('tui_monitor', {})

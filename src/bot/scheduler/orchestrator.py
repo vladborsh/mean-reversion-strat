@@ -512,11 +512,13 @@ class BotOrchestrator:
         # Initialize telemetry with bot state
         if self.telemetry:
             bot_start_time = datetime.now(timezone.utc)
+            reset_metrics = self.config.should_reset_telemetry_on_startup()
             self.telemetry.set_bot_state(
                 bot_start_time=bot_start_time,
                 run_interval_minutes=run_interval,
                 sync_second=sync_second,
-                is_running=True
+                is_running=True,
+                reset_session_metrics=reset_metrics
             )
             # Set trading hours status
             self.telemetry.set_trading_hours_active(self._validate_trading_hours())
