@@ -15,8 +15,6 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-import psutil
-import humanize
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, VerticalScroll
 from textual.widget import Widget
@@ -136,61 +134,6 @@ class BotStatusPanel(Widget):
         self.query_one("#trading-hours", Static).update(f"Trading Hours: {self.trading_hours_status}")
         self.query_one("#active-strategies", Static).update(f"Active Strategies: {self.active_strategies}")
         self.query_one("#last-cycle-status", Static).update(f"Last Cycle: {self.last_cycle_status}")
-
-
-class SystemMetricsPanel(Widget):
-    """Widget displaying system metrics"""
-    
-    DEFAULT_CSS = """
-    SystemMetricsPanel {
-        height: auto;
-        border: solid $primary;
-        padding: 1;
-    }
-    
-    SystemMetricsPanel Static {
-        margin: 0 1;
-    }
-    
-    SystemMetricsPanel .metrics-title {
-        color: $text-muted;
-    }
-    """
-    
-    cpu_percent = reactive(0.0)
-    memory_used = reactive("0 MB")
-    memory_percent = reactive(0.0)
-    
-    def compose(self) -> ComposeResult:
-        yield Static("System", classes="metrics-title")
-        yield Static(f"CPU: {self.cpu_percent:.1f}%", id="cpu")
-        yield Static(f"MEM: {self.memory_used}", id="memory")
-        yield Static(f"     ({self.memory_percent:.1f}%)", id="memory-percent")
-    
-    def update_metrics(self):
-        """Update system metrics"""
-        try:
-            # Get current process
-            process = psutil.Process()
-            
-            # CPU usage
-            self.cpu_percent = process.cpu_percent(interval=0.1)
-            
-            # Memory usage
-            mem_info = process.memory_info()
-            self.memory_used = humanize.naturalsize(mem_info.rss, binary=True)
-            
-            # System memory percent
-            system_mem = psutil.virtual_memory()
-            self.memory_percent = system_mem.percent
-            
-            # Update display
-            self.query_one("#cpu", Static).update(f"CPU: {self.cpu_percent:.1f}%")
-            self.query_one("#memory", Static).update(f"MEM: {self.memory_used}")
-            self.query_one("#memory-percent", Static).update(f"     ({self.memory_percent:.1f}%)")
-        
-        except Exception as e:
-            logger.error(f"Error updating system metrics: {e}")
 
 
 class SignalHistoryTable(Widget):
@@ -329,71 +272,6 @@ class LiveLogViewer(Widget):
         log.write(f"{prefix} {message}")
 
 
-class StrategyMetricsPanel(Widget):
-    """Panel showing strategy-specific metrics"""
-    
-    DEFAULT_CSS = """
-    StrategyMetricsPanel {
-        height: auto;
-        border: solid $primary;
-        padding: 1;
-    }
-    
-    StrategyMetricsPanel .strategy-title {
-        color: $accent;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    
-    StrategyMetricsPanel Static {
-        margin: 0 1;
-    }
-    
-    StrategyMetricsPanel VerticalScroll {
-        height: 8;
-    }
-    """
-    
-    def compose(self) -> ComposeResult:
-        yield Static("Strategy Performance 📊", classes="strategy-title")
-        with VerticalScroll():
-            yield Static("Strategy: All Strategies", id="strategy-header")
-            yield Static("", id="strategy-status")
-            yield Static("", id="signal-summary")
-    
-    def update_metrics(self, telemetry: TelemetryFileReader):
-        """Update strategy metrics"""
-        # Get signal counts
-        long_signals = telemetry.get_counter('signals.long')
-        short_signals = telemetry.get_counter('signals.short')
-        no_signals = telemetry.get_counter('signals.none')
-        
-        total = long_signals + short_signals + no_signals
-        
-        if total > 0:
-            long_pct = (long_signals / total) * 100
-            short_pct = (short_signals / total) * 100
-            no_signal_pct = (no_signals / total) * 100
-            
-            # Create bar visualization
-            bar_length = 20
-            long_bar = '█' * int(long_pct * bar_length / 100)
-            short_bar = '█' * int(short_pct * bar_length / 100)
-            no_signal_bar = '█' * int(no_signal_pct * bar_length / 100)
-            
-            summary = f"""
-Signals (Total: {int(total)}):
-  🟢 Long:  {int(long_signals):3d}  {long_bar:<{bar_length}} {long_pct:.1f}%
-  🔴 Short: {int(short_signals):3d}  {short_bar:<{bar_length}} {short_pct:.1f}%
-  ⚪ None:  {int(no_signals):3d}  {no_signal_bar:<{bar_length}} {no_signal_pct:.1f}%
-"""
-        else:
-            summary = "\nNo signals generated yet..."
-        
-        # Update display
-        self.query_one("#signal-summary", Static).update(summary)
-
-
 class BotMonitorApp(App):
     """Main Bot Monitor TUI Application"""
     
@@ -414,15 +292,6 @@ class BotMonitorApp(App):
     
     #bot-status-container {
         width: 2fr;
-    }
-    
-    #system-metrics-container {
-        width: 1fr;
-    }
-    
-    #strategy-metrics-container {
-        margin: 1 2;
-        height: auto;
     }
     
     #signals-table-container {
@@ -458,11 +327,6 @@ class BotMonitorApp(App):
         with Horizontal():
             with Vertical(id="bot-status-container"):
                 yield BotStatusPanel(id="bot-status")
-            with Vertical(id="system-metrics-container"):
-                yield SystemMetricsPanel(id="system-metrics")
-        
-        with Vertical(id="strategy-metrics-container"):
-            yield StrategyMetricsPanel(id="strategy-metrics")
         
         with Vertical(id="signals-table-container"):
             yield SignalHistoryTable(id="signal-history")
@@ -491,14 +355,6 @@ class BotMonitorApp(App):
             # Update bot status
             bot_status = self.query_one("#bot-status", BotStatusPanel)
             bot_status.update_status(self.telemetry, None)  # None = read from state file
-            
-            # Update system metrics
-            system_metrics = self.query_one("#system-metrics", SystemMetricsPanel)
-            system_metrics.update_metrics()
-            
-            # Update strategy metrics
-            strategy_metrics = self.query_one("#strategy-metrics", StrategyMetricsPanel)
-            strategy_metrics.update_metrics(self.telemetry)
             
             # Update signal history
             signal_history = self.query_one("#signal-history", SignalHistoryTable)

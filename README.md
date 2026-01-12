@@ -24,6 +24,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
 - **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
+- **[Telemetry & TUI Monitor](docs/TELEMETRY_TUI_GUIDE.md)** - Real-time monitoring and telemetry system
 - **[Live Performance Verifier](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Historical performance analysis tool
 - **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
 - **[Post-Processing & Results Analysis](docs/POST_PROCESSING.md)** - Analyzing optimization results and generating PNL charts

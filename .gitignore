@@ -220,6 +220,9 @@ charts/
 logs/
 *.log
 
+# Telemetry data
+telemetry_data/
+
 # Temporary files
 tmp/
 temp/
