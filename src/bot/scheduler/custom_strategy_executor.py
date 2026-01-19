@@ -120,6 +120,9 @@ class CustomStrategyExecutor(StrategyExecutor):
                 'strategy': strategy,
                 'signal': signal_result,
                 'data': data,
+                'strategy_name': 'custom_strategies',  # NEW: Identify as custom strategy
+                'custom_strategy': strategy,  # NEW: Include specific custom strategy name
+                'strategy_params': {},  # NEW: Empty params for custom strategies
                 'message': f'Analysis completed for {symbol}'
             }
             

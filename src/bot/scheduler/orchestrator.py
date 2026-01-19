@@ -349,7 +349,9 @@ class BotOrchestrator:
                         data=data,
                         signal_data=signal_data,
                         strategy_params=analysis_result.get('strategy_params', {}),
-                        symbol=analysis_result.get('symbol')
+                        symbol=analysis_result.get('symbol'),
+                        strategy_name=analysis_result.get('strategy_name', strategy_name),
+                        custom_strategy=analysis_result.get('custom_strategy')
                     )
             except Exception as e:
                 logger.error(f"❌ Failed to generate chart: {e}")

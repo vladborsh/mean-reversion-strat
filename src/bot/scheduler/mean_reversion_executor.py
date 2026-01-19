@@ -103,6 +103,8 @@ class MeanReversionExecutor(StrategyExecutor):
                 'strategy_params': strategy_params,
                 'signal': signal_result,
                 'data': data,  # Include data for chart generation
+                'strategy_name': 'mean_reversion',  # NEW: Identify strategy type
+                'custom_strategy': None,  # NEW: No custom strategy for mean reversion
                 'message': f'Analysis completed for {symbol}'
             }
             
