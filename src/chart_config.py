@@ -125,6 +125,12 @@ class ChartConfig:
             'show_rsi': True,
             'description': 'VWAP strategy for Bitcoin with RSI'
         },
+        'vwap_eth': {
+            'show_bb': False,
+            'show_vwap': True,
+            'show_rsi': True,
+            'description': 'VWAP strategy for Ethereum with RSI'
+        },
         'session_sweep': {
             'show_bb': False,
             'show_vwap': False,

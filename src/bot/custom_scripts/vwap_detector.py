@@ -40,7 +40,8 @@ class VWAPDetector:
                  num_std: float = 1.0,
                  signal_window_start: str = "13:00",
                  signal_window_end: str = "15:00",
-                 anchor_period: str = "day"):
+                 anchor_period: str = "day",
+                 bands_multiplier: float = 1.0):
         """
         Initialize the VWAP Detector.
         
@@ -51,9 +52,11 @@ class VWAPDetector:
             signal_window_start: Signal window start time in HH:MM format (default: "13:00")
             signal_window_end: Signal window end time in HH:MM format (default: "15:00")
             anchor_period: VWAP reset period - 'day', 'week', 'month', or 'year' (default: "day")
+            bands_multiplier: Multiplier to make bands wider/narrower (default: 1.0)
         """
         self.num_std = num_std
         self.anchor_period = anchor_period
+        self.bands_multiplier = bands_multiplier
         
         # Parse time strings
         self.signal_window_start = self._parse_time(signal_window_start)
@@ -61,7 +64,8 @@ class VWAPDetector:
         
         logger.info(
             f"VWAPDetector initialized: "
-            f"num_std={num_std}, anchor_period={anchor_period}, "
+            f"num_std={num_std}, bands_multiplier={bands_multiplier}, "
+            f"anchor_period={anchor_period}, "
             f"signals={signal_window_start}-{signal_window_end}"
         )
     
@@ -136,7 +140,8 @@ class VWAPDetector:
                 vwap, vwap_upper, vwap_lower = Indicators.vwap_daily_reset_forex_compatible(
                     df, 
                     num_std=self.num_std,
-                    anchor_period=self.anchor_period
+                    anchor_period=self.anchor_period,
+                    bands_multiplier=self.bands_multiplier
                 )
             except Exception as e:
                 error_msg = f"Error calculating VWAP: {str(e)}"
@@ -315,6 +320,7 @@ def create_vwap_detector(config: dict) -> VWAPDetector:
                 - signal_window_start: Signal window start time (HH:MM)
                 - signal_window_end: Signal window end time (HH:MM)
                 - anchor_period: VWAP reset period (default: 'day')
+                - bands_multiplier: Bands width multiplier (default: 1.0)
     
     Returns:
         Configured VWAPDetector instance
@@ -323,5 +329,6 @@ def create_vwap_detector(config: dict) -> VWAPDetector:
         num_std=config.get('num_std', 1.0),
         signal_window_start=config.get('signal_window_start', '13:00'),
         signal_window_end=config.get('signal_window_end', '15:00'),
-        anchor_period=config.get('anchor_period', 'day')
+        anchor_period=config.get('anchor_period', 'day'),
+        bands_multiplier=config.get('bands_multiplier', 1.0)
     )

@@ -22,7 +22,19 @@ class StrategyConfig:
     VWAP = {
         'window': 20,
         'std_dev': 2,
-        'anchor': 'day'  # 'day', 'week', 'month', 'year'
+        'anchor': 'day',  # 'day', 'week', 'month', 'year'
+        'bands_multiplier': 1.0  # Default multiplier for bands width
+    }
+    
+    # Symbol-specific VWAP configurations
+    VWAP_SYMBOL_OVERRIDES = {
+        'BTC': {
+            'bands_multiplier': 2.0
+        },
+        'ETH': {
+            'bands_multiplier': 2.0
+        }
+        # Other symbols use default from VWAP config
     }
     
     # Risk Management Parameters
@@ -86,6 +98,7 @@ class StrategyConfig:
             'vwap_window': cls.VWAP['window'],
             'vwap_std': cls.VWAP['std_dev'],
             'vwap_anchor': cls.VWAP['anchor'],
+            'vwap_bands_multiplier': cls.VWAP['bands_multiplier'],
             
             # ATR
             'atr_period': cls.RISK_MANAGEMENT['atr_period'],
@@ -148,6 +161,20 @@ class StrategyConfig:
             'order_lifetime': cls.ORDER_LIFETIME,
             'backtest': cls.BACKTEST
         }
+    
+    @classmethod
+    def get_vwap_bands_multiplier(cls, symbol: str) -> float:
+        """
+        Get VWAP bands multiplier for a specific symbol.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTC', 'ETH', 'GOLD')
+        
+        Returns:
+            Bands multiplier value (default: 1.0)
+        """
+        symbol_override = cls.VWAP_SYMBOL_OVERRIDES.get(symbol, {})
+        return symbol_override.get('bands_multiplier', cls.VWAP['bands_multiplier'])
 
 
 # Alternative configuration for different market conditions or testing

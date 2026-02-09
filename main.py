@@ -111,6 +111,7 @@ def create_custom_config_class(config_dict: Dict[str, Any]):
                 'vwap_window': vwap_config['window'],
                 'vwap_std': vwap_config['std_dev'],
                 'vwap_anchor': 'day',  # Default anchor
+                'vwap_bands_multiplier': vwap_config.get('bands_multiplier', 1.0),
                 'atr_period': atr_config['period'],
                 'require_reversal': strategy_config.get('require_reversal', True),
                 'regime_min_score': strategy_config.get('regime_min_score', 60),
@@ -229,7 +230,8 @@ def run_strategy(df, config_class=None, timeframe='15m'):
     vwap, vwap_upper, vwap_lower = Indicators.vwap_daily_reset_forex_compatible(
         df, 
         num_std=vwap_std,
-        anchor_period=vwap_anchor
+        anchor_period=vwap_anchor,
+        bands_multiplier=params.get('vwap_bands_multiplier', 1.0)
     )
     bb = {'ma': bb_ma, 'upper': bb_upper, 'lower': bb_lower}
     vwap_dict = {'vwap': vwap, 'upper': vwap_upper, 'lower': vwap_lower}

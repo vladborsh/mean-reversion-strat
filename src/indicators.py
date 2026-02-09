@@ -21,7 +21,7 @@ class Indicators:
         return vwap, upper, lower
 
     @staticmethod
-    def vwap_daily_reset(df: pd.DataFrame, num_std: float = 1.0, anchor_period: str = 'day') -> tuple[pd.Series, pd.Series, pd.Series]:
+    def vwap_daily_reset(df: pd.DataFrame, num_std: float = 1.0, anchor_period: str = 'day', bands_multiplier: float = 1.0) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Calculate VWAP with configurable anchor period reset and standard deviation bands.
         
@@ -35,6 +35,7 @@ class Indicators:
             df: DataFrame with OHLCV data and datetime index
             num_std: Number of standard deviations for bands
             anchor_period: Reset period - 'day', 'week', 'month', or 'year'
+            bands_multiplier: Multiplier to make bands wider/narrower (default: 1.0)
             
         Returns:
             tuple: (vwap, vwap_upper, vwap_lower) as pandas Series
@@ -92,8 +93,8 @@ class Indicators:
             expanding_std = deviations.expanding(min_periods=1).std(ddof=0)
             
             # Calculate bands
-            upper_band = vwap + (num_std * expanding_std)
-            lower_band = vwap - (num_std * expanding_std)
+            upper_band = vwap + (num_std * expanding_std * bands_multiplier)
+            lower_band = vwap - (num_std * expanding_std * bands_multiplier)
             
             return pd.DataFrame({
                 'vwap': vwap,
@@ -122,7 +123,7 @@ class Indicators:
         )
     
     @staticmethod
-    def vwap_daily_reset_forex_compatible(df: pd.DataFrame, num_std: float = 1.0, anchor_period: str = 'day') -> tuple[pd.Series, pd.Series, pd.Series]:
+    def vwap_daily_reset_forex_compatible(df: pd.DataFrame, num_std: float = 1.0, anchor_period: str = 'day', bands_multiplier: float = 1.0) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Calculate VWAP with configurable anchor period reset, compatible with forex data.
         
@@ -135,6 +136,7 @@ class Indicators:
             df: DataFrame with OHLCV data and datetime index
             num_std: Number of standard deviations for bands
             anchor_period: Reset period - 'day', 'week', 'month', or 'year'
+            bands_multiplier: Multiplier to make bands wider/narrower (default: 1.0)
             
         Returns:
             tuple: (vwap, vwap_upper, vwap_lower) as pandas Series
@@ -159,7 +161,7 @@ class Indicators:
         
         if has_volume:
             # Use standard VWAP calculation
-            return Indicators.vwap_daily_reset(df, num_std, anchor_period)
+            return Indicators.vwap_daily_reset(df, num_std, anchor_period, bands_multiplier)
         else:
             # Create grouping key based on anchor period
             def _get_period_key(timestamp):
@@ -190,8 +192,8 @@ class Indicators:
                 expanding_std = expanding_std.fillna(0)
                 
                 # Calculate bands
-                upper_band = expanding_avg + (num_std * expanding_std)
-                lower_band = expanding_avg - (num_std * expanding_std)
+                upper_band = expanding_avg + (num_std * expanding_std * bands_multiplier)
+                lower_band = expanding_avg - (num_std * expanding_std * bands_multiplier)
                 
                 return pd.DataFrame({
                     'vwap': expanding_avg,

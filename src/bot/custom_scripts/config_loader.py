@@ -55,6 +55,18 @@ class CustomStrategyConfigLoader:
         
         asset_details = self.get_asset_details(symbol)
         
+        # Get strategy parameters
+        strategy_params = strategy.get('parameters', {}).copy()
+        
+        # Apply symbol-specific VWAP overrides from strategy_config.py
+        # This allows centralized configuration for symbol-specific settings
+        if strategy.get('detector_class') == 'VWAPDetector':
+            from src.strategy_config import StrategyConfig
+            bands_multiplier = StrategyConfig.get_vwap_bands_multiplier(symbol)
+            # Only override if not already specified in config
+            if 'bands_multiplier' not in strategy_params:
+                strategy_params['bands_multiplier'] = bands_multiplier
+        
         return {
             'symbol': symbol,
             'fetch_symbol': asset.get('fetch_symbol', symbol),
@@ -62,7 +74,7 @@ class CustomStrategyConfigLoader:
             'strategy_name': strategy_name,
             'detector_class': strategy.get('detector_class'),
             'detector_module': strategy.get('detector_module'),
-            'strategy_params': strategy.get('parameters', {}),
+            'strategy_params': strategy_params,
             'asset_details': asset_details or {}
         }
     
