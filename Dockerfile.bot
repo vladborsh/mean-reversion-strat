@@ -24,8 +24,8 @@ ENV PYTHONUNBUFFERED=1 \
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import os; exit(0 if os.path.exists('/app/live_logs') else 1)"
 
-# Set the entrypoint to run the unified bot
-ENTRYPOINT ["python", "unified_bot.py"]
+# Set the entrypoint to run the trading bot
+ENTRYPOINT ["python", "trading_bot.py"]
 
 # Default command if no arguments provided
 CMD []

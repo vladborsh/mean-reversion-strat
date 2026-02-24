@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Live Signal Detector
+Signal Detector
 
 This module provides functionality to detect trading signals from the MeanReversionStrategy
-in real-time using backtrader's cerebro engine. It captures new orders that the strategy
-would place at the current time without actually executing trades.
+using backtrader's cerebro engine. It captures new orders that the strategy would place
+without actually executing trades.
+
+Used for both backtesting analysis and live trading signal detection.
 """
 
 import pandas as pd

@@ -22,6 +22,7 @@ A comprehensive trading strategy implementation using Bollinger Bands and VWAP f
 
 Comprehensive documentation is available in the `docs/` directory:
 
+- **[Trading Bot Guide](docs/TRADING_BOT.md)** - Parallel strategy execution and live trading
 - **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
 - **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
 - **[Telemetry & TUI Monitor](docs/TELEMETRY_TUI_GUIDE.md)** - Real-time monitoring and telemetry system
@@ -179,11 +180,11 @@ The strategy includes a live trading scheduler with Telegram bot integration for
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
    ```
 
-2. **Run Live Strategy**:
+2. **Run Trading Bot**:
    ```bash
-   # Start the live strategy scheduler
-   python live_strategy_scheduler.py
-   
+   # Start the trading bot (runs all enabled strategies)
+   python trading_bot.py
+
    # Or run in a container (recommended for production)
    podman build -f Dockerfile.bot -t mean-reversion-bot .
    podman run --env-file .env mean-reversion-bot
@@ -195,7 +196,8 @@ The strategy includes a live trading scheduler with Telegram bot integration for
    - Use `/help` to see available commands
 
 For detailed setup instructions, see:
-- **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** - Complete bot setup guide
+- **[Trading Bot Guide](docs/TRADING_BOT.md)** - Complete trading bot documentation
+- **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** - Telegram setup guide
 - **[Bot Docker Instructions](docs/BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment
 
 ## Running with Containers

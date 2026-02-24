@@ -10,18 +10,18 @@ The project provides **two separate Dockerfiles**:
 
 | Dockerfile | Purpose | Entry Point | Service Name |
 |------------|---------|-------------|--------------|
-| **Dockerfile.bot** | Live trading bot | `unified_bot.py` | `unified-bot` (recommended) |
+| **Dockerfile.bot** | Live trading bot | `trading_bot.py` | `trading-bot` (recommended) |
 | **Dockerfile** | Strategy optimizer | `optimize_strategy.py` | `optimizer` |
 
 > **Important**: Make sure you're using the correct Dockerfile for your use case:
-> - **Live trading**: Use `Dockerfile.bot` → Run `unified_bot.py`
+> - **Live trading**: Use `Dockerfile.bot` → Run `trading_bot.py`
 > - **Backtesting/Optimization**: Use `Dockerfile` → Run `optimize_strategy.py`
 
 ### Deployment Options
 
 The Podman setup provides:
 
-- **Unified Bot**: Runs all strategies in parallel with shared infrastructure (recommended)
+- **Trading Bot**: Runs all strategies in parallel with shared infrastructure (recommended)
 - **Legacy Bots**: Separate schedulers (deprecated, for backward compatibility)
 - **Optimizer**: For backtesting and hyperparameter optimization
 
@@ -62,17 +62,17 @@ AWS_DEFAULT_REGION=us-east-1
 USE_PERSISTENT_CACHE=true
 ```
 
-### 3. Run the Unified Bot
+### 3. Run the Trading Bot
 
 ```bash
-# Build and start the unified bot
-podman-compose up -d unified-bot
+# Build and start the trading bot
+podman-compose up -d trading-bot
 
 # View logs
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 
 # Stop the bot
-podman-compose stop unified-bot
+podman-compose stop trading-bot
 
 # Remove the bot
 podman-compose down
@@ -82,32 +82,32 @@ podman-compose down
 
 This project provides two main Podman images:
 
-1. **`Dockerfile.bot`** → Live trading bot (unified-bot, mean-reversion-bot, custom-strategy-bot)
+1. **`Dockerfile.bot`** → Live trading bot (trading-bot, mean-reversion-bot, custom-strategy-bot)
 2. **`Dockerfile`** → Strategy optimizer for backtesting and hyperparameter optimization
 
-### Unified Bot (Recommended)
+### Trading Bot (Recommended)
 
-**Service**: `unified-bot`  
+**Service**: `trading-bot`  
 **File**: `Dockerfile.bot`  
-**Command**: `python unified_bot.py`
+**Command**: `python trading_bot.py`
 
-The unified bot runs all strategies in parallel with shared infrastructure.
+The trading bot runs all strategies in parallel with shared infrastructure.
 
 ```bash
-# Start unified bot
-podman-compose up -d unified-bot
+# Start trading bot
+podman-compose up -d trading-bot
 
 # View real-time logs
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 
 # Check status
-podman-compose ps unified-bot
+podman-compose ps trading-bot
 
 # Restart bot
-podman-compose restart unified-bot
+podman-compose restart trading-bot
 
 # Stop bot
-podman-compose stop unified-bot
+podman-compose stop trading-bot
 ```
 
 **Features**:
@@ -123,17 +123,17 @@ podman-compose stop unified-bot
 > **⚠️ Deprecation Notice**: 
 > Legacy individual schedulers (`mean-reversion-bot`, `custom-strategy-bot`) are deprecated and will be removed in a future version.
 > 
-> **Please migrate to `unified-bot`** for:
+> **Please migrate to `trading-bot`** for:
 > - Better performance with parallel execution
 > - Shared infrastructure (single Telegram bot, signal cache)
 > - Improved error handling and monitoring
 > - Centralized configuration via `bot_config.json`
 >
-> See [Migration Guide](#migration-from-legacy-to-unified-bot) below.
+> See [Migration Guide](#migration-from-legacy-to-trading-bot) below.
 
 **Services**: `mean-reversion-bot`, `custom-strategy-bot`  
 **Profile**: `legacy`  
-**File**: `Dockerfile.bot` (same as unified bot, different command)
+**File**: `Dockerfile.bot` (same as trading bot, different command)
 
 These are the old separate schedulers, kept for backward compatibility only.
 
@@ -149,7 +149,7 @@ podman-compose logs -f custom-strategy-bot
 podman-compose --profile legacy down
 ```
 
-**⚠️ Not recommended for new deployments**. Use unified-bot instead.
+**⚠️ Not recommended for new deployments**. Use trading-bot instead.
 
 ### Strategy Optimizer
 
@@ -283,12 +283,12 @@ The master configuration file controls which strategies run:
 }
 ```
 
-> **Note**: The `bot_config.json` file should exist in your project root. If it doesn't exist, create it or see the unified bot documentation for the default configuration structure.
+> **Note**: The `bot_config.json` file should exist in your project root. If it doesn't exist, create it or see the trading bot documentation for the default configuration structure.
 
 **To enable/disable strategies**:
 1. Edit `bot_config.json`
 2. Set `enabled: false` for strategies you don't want
-3. Restart the container: `podman-compose restart unified-bot`
+3. Restart the container: `podman-compose restart trading-bot`
 
 ### Volume Mounts
 
@@ -318,8 +318,8 @@ volumes:
 ### Build Images
 
 ```bash
-# Build unified bot image
-podman-compose build unified-bot
+# Build trading bot image
+podman-compose build trading-bot
 
 # Build optimizer image
 podman-compose build optimizer
@@ -335,13 +335,13 @@ podman-compose build
 podman-compose logs
 
 # Follow logs (real-time)
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 
 # View last 100 lines
-podman-compose logs --tail=100 unified-bot
+podman-compose logs --tail=100 trading-bot
 
 # View logs with timestamps
-podman-compose logs -t unified-bot
+podman-compose logs -t trading-bot
 ```
 
 ### Container Management
@@ -357,7 +357,7 @@ podman-compose stop
 podman-compose start
 
 # Restart a service
-podman-compose restart unified-bot
+podman-compose restart trading-bot
 
 # Remove containers (keeps images)
 podman-compose down
@@ -373,38 +373,38 @@ podman-compose down --rmi all -v
 
 ```bash
 # Open shell in container
-podman-compose exec unified-bot /bin/bash
+podman-compose exec trading-bot /bin/bash
 
 # Run Python command
-podman-compose exec unified-bot python -c "print('Hello from container')"
+podman-compose exec trading-bot python -c "print('Hello from container')"
 
 # Check Python version
-podman-compose exec unified-bot python --version
+podman-compose exec trading-bot python --version
 
 # List files
-podman-compose exec unified-bot ls -la /app
+podman-compose exec trading-bot ls -la /app
 
 # View configuration
-podman-compose exec unified-bot cat /app/bot_config.json
+podman-compose exec trading-bot cat /app/bot_config.json
 ```
 
 ### Debugging
 
 ```bash
 # Check container health
-podman-compose ps unified-bot
+podman-compose ps trading-bot
 
 # Inspect container
-podman inspect mean-reversion-unified-bot
+podman inspect mean-reversion-trading-bot
 
 # View resource usage
-podman stats mean-reversion-unified-bot
+podman stats mean-reversion-trading-bot
 
 # Check environment variables
-podman-compose exec unified-bot env | grep CAPITAL_COM
+podman-compose exec trading-bot env | grep CAPITAL_COM
 
 # Test bot initialization
-podman-compose exec unified-bot python -c "from unified_bot import main; print('OK')"
+podman-compose exec trading-bot python -c "from unified_bot import main; print('OK')"
 ```
 
 ## Production Deployment
@@ -424,28 +424,28 @@ nano .env  # Add your credentials
 nano bot_config.json  # Enable/disable strategies
 
 # 4. Build and start
-podman-compose build unified-bot
-podman-compose up -d unified-bot
+podman-compose build trading-bot
+podman-compose up -d trading-bot
 
 # 5. Verify logs
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 
 # 6. Monitor
 podman-compose ps
-podman stats mean-reversion-unified-bot
+podman stats mean-reversion-trading-bot
 ```
 
 ### Monitoring
 
 ```bash
 # Check logs regularly
-podman-compose logs --tail=50 unified-bot
+podman-compose logs --tail=50 trading-bot
 
 # Monitor resource usage
-podman stats mean-reversion-unified-bot
+podman stats mean-reversion-trading-bot
 
 # Check health status
-podman-compose ps unified-bot
+podman-compose ps trading-bot
 
 # Set up log rotation (already configured in podman-compose.yml)
 # - Max size: 10MB per file
@@ -455,7 +455,7 @@ podman-compose ps unified-bot
 
 ### Automatic Restart
 
-The unified-bot is configured with `restart: unless-stopped`, which means:
+The trading-bot is configured with `restart: unless-stopped`, which means:
 - Container restarts automatically if it crashes
 - Container starts automatically on system boot
 - Container stays stopped if manually stopped
@@ -464,7 +464,7 @@ To change restart policy:
 ```yaml
 # podman-compose.yml
 services:
-  unified-bot:
+  trading-bot:
     restart: no          # Never restart
     restart: always      # Always restart
     restart: on-failure  # Restart only on error
@@ -477,20 +477,20 @@ services:
 
 ```bash
 # Check logs
-podman-compose logs unified-bot
+podman-compose logs trading-bot
 
 # Check configuration
 podman-compose config
 
 # Verify environment variables
-podman-compose exec unified-bot env
+podman-compose exec trading-bot env
 ```
 
 ### Bot Not Connecting to Capital.com
 
 ```bash
 # Verify credentials in container
-podman-compose exec unified-bot python << 'EOF'
+podman-compose exec trading-bot python << 'EOF'
 import os
 print(f"API Key: {os.getenv('CAPITAL_COM_API_KEY')[:10]}...")
 print(f"Password: {'***' if os.getenv('CAPITAL_COM_PASSWORD') else 'NOT SET'}")
@@ -498,7 +498,7 @@ print(f"Identifier: {os.getenv('CAPITAL_COM_IDENTIFIER')}")
 EOF
 
 # Test Capital.com connection
-podman-compose exec unified-bot python << 'EOF'
+podman-compose exec trading-bot python << 'EOF'
 from src.capital_com_fetcher import create_capital_com_fetcher
 fetcher = create_capital_com_fetcher()
 print("Connection OK" if fetcher else "Connection FAILED")
@@ -509,14 +509,14 @@ EOF
 
 ```bash
 # Check token
-podman-compose exec unified-bot python << 'EOF'
+podman-compose exec trading-bot python << 'EOF'
 import os
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 print(f"Token: {token[:10] if token else 'NOT SET'}...")
 EOF
 
 # Test Telegram bot
-podman-compose exec unified-bot python << 'EOF'
+podman-compose exec trading-bot python << 'EOF'
 from src.bot.telegram_bot import create_telegram_bot_from_env
 bot = create_telegram_bot_from_env()
 print("Telegram OK" if bot else "Telegram FAILED")
@@ -527,11 +527,11 @@ EOF
 
 ```bash
 # Check resource usage
-podman stats mean-reversion-unified-bot
+podman stats mean-reversion-trading-bot
 
 # Add memory limits to podman-compose.yml
 services:
-  unified-bot:
+  trading-bot:
     deploy:
       resources:
         limits:
@@ -551,7 +551,7 @@ To adjust:
 ```yaml
 # podman-compose.yml
 services:
-  unified-bot:
+  trading-bot:
     logging:
       driver: "json-file"
       options:
@@ -563,28 +563,28 @@ services:
 
 ```bash
 # 1. Stop the bot
-podman-compose stop unified-bot
+podman-compose stop trading-bot
 
 # 2. Pull latest changes
 git pull origin main
 
 # 3. Rebuild image
-podman-compose build unified-bot
+podman-compose build trading-bot
 
 # 4. Start the bot
-podman-compose up -d unified-bot
+podman-compose up -d trading-bot
 
 # 5. Verify logs
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 ```
 
-## Migration from Legacy to Unified Bot
+## Migration from Legacy to Trading Bot
 
-If you're currently using the legacy individual schedulers (`mean-reversion-bot` or `custom-strategy-bot`), follow these steps to migrate to the unified bot:
+If you're currently using the legacy individual schedulers (`mean-reversion-bot` or `custom-strategy-bot`), follow these steps to migrate to the trading bot:
 
 ### Step 1: Understand the Differences
 
-| Feature | Legacy Bots | Unified Bot |
+| Feature | Legacy Bots | Trading Bot |
 |---------|------------|-------------|
 | **Execution** | Sequential (one at a time) | Parallel (all strategies run simultaneously) |
 | **Configuration** | Separate per-strategy config files | Single `bot_config.json` file |
@@ -648,18 +648,18 @@ podman-compose --profile legacy stop mean-reversion-bot custom-strategy-bot
 podman-compose --profile legacy down
 ```
 
-### Step 4: Start Unified Bot
+### Step 4: Start Trading Bot
 
 ```bash
-# Build and start the unified bot
-podman-compose build unified-bot
-podman-compose up -d unified-bot
+# Build and start the trading bot
+podman-compose build trading-bot
+podman-compose up -d trading-bot
 
 # Verify it's running
-podman-compose ps unified-bot
+podman-compose ps trading-bot
 
 # Check the logs
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 ```
 
 ### Step 5: Verify Migration
@@ -672,13 +672,13 @@ Monitor the logs to ensure:
 
 ```bash
 # Check for successful initialization
-podman-compose logs unified-bot | grep -i "initialized"
+podman-compose logs trading-bot | grep -i "initialized"
 
 # Monitor for errors
-podman-compose logs unified-bot | grep -i "error"
+podman-compose logs trading-bot | grep -i "error"
 
 # Watch real-time activity
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 ```
 
 ### Step 6: Update Your Deployment Scripts
@@ -692,7 +692,7 @@ podman-compose --profile legacy up -d mean-reversion-bot custom-strategy-bot
 
 **New:**
 ```bash
-podman-compose up -d unified-bot
+podman-compose up -d trading-bot
 ```
 
 ### Rollback (If Needed)
@@ -700,8 +700,8 @@ podman-compose up -d unified-bot
 If you encounter issues and need to rollback:
 
 ```bash
-# Stop unified bot
-podman-compose stop unified-bot
+# Stop trading bot
+podman-compose stop trading-bot
 
 # Restart legacy bots
 podman-compose --profile legacy up -d mean-reversion-bot custom-strategy-bot
@@ -731,9 +731,9 @@ After migration, you'll benefit from:
 **Issue: "Telegram not working"**
 - Verify TELEGRAM_BOT_TOKEN in .env file
 - Check bot was created properly with BotFather
-- Test token with: `podman-compose exec unified-bot python -c "import os; print(os.getenv('TELEGRAM_BOT_TOKEN')[:10])"`
+- Test token with: `podman-compose exec trading-bot python -c "import os; print(os.getenv('TELEGRAM_BOT_TOKEN')[:10])"`
 
-For more help, check the logs: `podman-compose logs -f unified-bot`
+For more help, check the logs: `podman-compose logs -f trading-bot`
 
 ## Security Best Practices
 
@@ -747,7 +747,7 @@ For more help, check the logs: `podman-compose logs -f unified-bot`
 Example with Podman secrets:
 ```yaml
 services:
-  unified-bot:
+  trading-bot:
     secrets:
       - capital_com_api_key
       - capital_com_password
@@ -764,8 +764,8 @@ secrets:
 
 ## Summary
 
-**For Production**: Use `unified-bot` service (recommended)  
-**For Development**: Run locally with `python unified_bot.py`  
+**For Production**: Use `trading-bot` service (recommended)  
+**For Development**: Run locally with `python trading_bot.py`  
 **For Backtesting**: Use `optimizer` service with --profile flag  
 **For Legacy**: Use `mean-reversion-bot` or `custom-strategy-bot` with --profile legacy (deprecated)
 
@@ -773,10 +773,10 @@ secrets:
 
 | Use Case | Command | Dockerfile |
 |----------|---------|------------|
-| Live Trading (Recommended) | `podman-compose up -d unified-bot` | Dockerfile.bot |
+| Live Trading (Recommended) | `podman-compose up -d trading-bot` | Dockerfile.bot |
 | Backtesting/Optimization | `podman-compose --profile optimizer run --rm optimizer --quick-test` | Dockerfile |
 | Legacy Individual Schedulers | `podman-compose --profile legacy up -d mean-reversion-bot` | Dockerfile.bot |
 
-The unified bot provides the best performance and features with parallel execution, error isolation, and shared infrastructure.
+The trading bot provides the best performance and features with parallel execution, error isolation, and shared infrastructure.
 
 For optimizer details including transport configuration (S3 vs local storage), see the [Strategy Optimizer](#strategy-optimizer) section above.

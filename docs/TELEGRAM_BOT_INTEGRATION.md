@@ -61,15 +61,16 @@ src/bot/
 ├── telegram_chat_manager.py        # Chat subscription management (in-memory)
 ├── telegram_message_templates.py   # Message formatting and templates
 ├── telegram_signal_notifier.py     # Signal notification handling
-└── live_signal_detector.py        # Signal detection for live trading
+└── signal_detector.py              # Signal detection for live trading
 
-live_strategy_scheduler.py         # Main scheduler (project root)
+trading_bot.py                      # Trading bot (project root)
 
 tests/
 └── test_telegram_bot.py           # Bot testing script
 
 docs/
 ├── TELEGRAM_BOT_INTEGRATION.md    # This documentation
+├── TRADING_BOT.md                 # Trading bot architecture guide
 └── BOT_DOCKER_INSTRUCTIONS.md     # Container deployment guide
 ```
 
@@ -118,13 +119,13 @@ Users can interact with your bot using these commands:
 - `/help` - Show available commands
 - `/status` - Display bot status and statistics
 
-## Integration with Live Strategy
+## Integration with Trading Bot
 
-The bot is automatically integrated with the live strategy scheduler. When enabled:
+The bot is automatically integrated with the trading bot. When enabled:
 
-1. **Signal Detection**: When the strategy detects a trading signal, it automatically sends a formatted notification to all active chats
+1. **Signal Detection**: When strategies detect trading signals, notifications are sent to all active chats
 2. **Error Notifications**: Critical errors are reported to subscribers
-3. **Graceful Shutdown**: Bot stops cleanly when the strategy scheduler stops
+3. **Graceful Shutdown**: Bot stops cleanly when the trading bot stops
 
 ## Message Examples
 
@@ -184,16 +185,18 @@ TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_PERSISTENCE_FILE=/path/to/chat_data.json
 ```
 
-### Live Strategy Integration
+### Trading Bot Integration
 
-In your live strategy scheduler:
+Configure Telegram in `bot_config.json`:
 
-```python
-# Enable/disable Telegram notifications
-scheduler = LiveStrategyScheduler(enable_telegram=True)
-
-# Or disable Telegram
-scheduler = LiveStrategyScheduler(enable_telegram=False)
+```json
+{
+  "telegram": {
+    "enabled": true,
+    "use_dynamodb": true,
+    "differentiate_strategies": true
+  }
+}
 ```
 
 ## Error Handling

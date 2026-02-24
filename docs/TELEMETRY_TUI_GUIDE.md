@@ -126,8 +126,8 @@ Day 2 with reset_on_startup: false → Shows "10 signals" from yesterday
 ### Running the Bot with Telemetry
 
 ```bash
-# Start the unified bot (telemetry is automatically enabled)
-python unified_bot.py
+# Start the trading bot (telemetry is automatically enabled)
+python trading_bot.py
 ```
 
 The bot will now collect telemetry data and persist it to `telemetry_data/` directory.
@@ -368,7 +368,7 @@ The TUI can run alongside the bot in Docker:
 
 ```bash
 # Run bot in Docker
-docker-compose up unified-bot
+docker-compose up trading-bot
 
 # Run TUI on host (connects to telemetry data via volume)
 python bot_monitor_tui.py
@@ -380,7 +380,7 @@ Edit `docker-compose.yml`:
 
 ```yaml
 services:
-  unified-bot-monitor:
+  trading-bot-monitor:
     build:
       context: .
       dockerfile: Dockerfile.bot
@@ -392,12 +392,12 @@ services:
       - ./live_logs:/app/live_logs:ro
       - ./telemetry_data:/app/telemetry_data:ro
     depends_on:
-      - unified-bot
+      - trading-bot
 ```
 
 Then run:
 ```bash
-docker-compose up unified-bot unified-bot-monitor
+docker-compose up trading-bot trading-bot-monitor
 docker attach mean-reversion-bot-monitor
 ```
 
@@ -864,7 +864,7 @@ Planned features for future versions:
 
 ```bash
 # Start the bot
-python unified_bot.py
+python trading_bot.py
 
 # Launch TUI monitor (separate terminal)
 python bot_monitor_tui.py

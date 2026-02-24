@@ -1,8 +1,8 @@
-# Unified Trading Bot
+# Trading Bot
 
 ## Overview
 
-The **Unified Trading Bot** (`unified_bot.py`) is a next-generation trading bot that runs multiple trading strategies in parallel with shared infrastructure. It replaces the separate `live_strategy_scheduler.py` and `custom_strategy_scheduler.py` with a unified, more efficient architecture.
+The **Trading Bot** (`trading_bot.py`) is a trading bot that runs multiple trading strategies in parallel with shared infrastructure. It consolidates strategy execution into a single, efficient process.
 
 ## Key Features
 
@@ -17,7 +17,7 @@ The **Unified Trading Bot** (`unified_bot.py`) is a next-generation trading bot 
 ## Architecture
 
 ```
-unified_bot.py
+trading_bot.py
 ├── BotOrchestrator (Main)
 │   ├── Shared Infrastructure
 │   │   ├── TelegramBotManager (singleton)
@@ -27,7 +27,7 @@ unified_bot.py
 │   │
 │   ├── Strategy Executors
 │   │   ├── MeanReversionExecutor
-│   │   │   └── Uses LiveSignalDetector
+│   │   │   └── Uses SignalDetector
 │   │   └── CustomStrategyExecutor
 │   │       └── Uses custom detectors
 │   │
@@ -106,8 +106,8 @@ Each strategy keeps its own configuration format - no changes needed!
 ### Basic Usage
 
 ```bash
-# Run the unified bot
-python unified_bot.py
+# Run the trading bot
+python trading_bot.py
 ```
 
 ### Enable/Disable Strategies
@@ -134,7 +134,7 @@ Edit `bot_config.json`:
 ```bash
 # Use a different config file
 export BOT_CONFIG_PATH=/path/to/custom_bot_config.json
-python unified_bot.py
+python trading_bot.py
 ```
 
 ## Environment Variables
@@ -153,35 +153,20 @@ BOT_CONFIG_PATH=/path/to/bot_config.json       # Custom config path
 USE_PERSISTENT_CACHE=true                       # DynamoDB cache
 ```
 
-## Migration from Old Schedulers
+## Benefits Over Previous Approach
 
-### Before (Two Separate Processes)
+The trading bot consolidates previously separate schedulers into a single, efficient process:
 
-```bash
-# Terminal 1
-python live_strategy_scheduler.py
-
-# Terminal 2
-python custom_strategy_scheduler.py
-```
-
-**Problems**:
+**Previous Challenges**:
 - Two separate processes to manage
 - Duplicate infrastructure (2x Telegram bots, 2x signal caches)
 - ~1400 lines of duplicated code
 - Hard to coordinate between strategies
 
-### After (Single Process)
-
-```bash
-# One terminal
-python unified_bot.py
-```
-
-**Benefits**:
+**Current Benefits**:
 - Single process, easier to manage
 - Shared infrastructure, no duplication
-- ~600 lines less code (42% reduction)
+- ~1400 lines less code (consolidated)
 - Better error handling and recovery
 - Strategies run in parallel (faster)
 
@@ -209,7 +194,7 @@ python unified_bot.py
 3. Execute strategies in parallel:
    ├── Mean Reversion Strategy
    │   ├── Fetch data for each symbol
-   │   ├── Analyze with LiveSignalDetector
+   │   ├── Analyze with SignalDetector
    │   └── Generate signals
    └── Custom Strategies
        ├── Fetch data for each asset
@@ -358,7 +343,7 @@ Signal Caches: 2 instances (potential duplicates)
 Error Handling: Strategy failure = process crash
 ```
 
-### New Architecture (Unified Bot)
+### Current Architecture (Trading Bot)
 
 ```
 Total Lines: ~800 lines (-42%)
@@ -473,25 +458,20 @@ A: Yes! Set `enabled: false` for the strategy you don't want in `bot_config.json
 **Q: Can I use different config file names?**  
 A: Yes! Just update the `config_file` path in `bot_config.json`.
 
-**Q: Do I need to change my existing strategy configs?**  
-A: No! The unified bot uses the same config formats as before.
+**Q: Do I need to change my existing strategy configs?**
+A: No! The trading bot uses the same config formats as before.
 
-**Q: What happened to the news scheduler?**  
+**Q: What happened to the news scheduler?**
 A: It was removed for cleaner architecture. Can be added as a separate service if needed.
-
-**Q: Can I still use the old schedulers?**  
-A: They still work but are deprecated. Use `unified_bot.py` for better performance and features.
 
 **Q: How do I add a new strategy?**  
 A: Create an executor class, add to `bot_config.json`, update orchestrator. See "Adding New Strategies" section.
 
 ## Summary
 
-The Unified Trading Bot provides:
+The Trading Bot provides:
 - **Better Performance**: Parallel execution, shared resources
-- **Cleaner Code**: 42% less code, easier to maintain
+- **Cleaner Code**: Consolidated architecture, easier to maintain
 - **Better Reliability**: Error isolation, robust error handling
 - **More Flexible**: Easy to enable/disable strategies
 - **Future-Proof**: Easy to add new strategies
-
-**Recommendation**: Migrate to `unified_bot.py` for production use. The old schedulers are kept for reference but deprecated.

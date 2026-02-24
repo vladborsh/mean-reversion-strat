@@ -62,7 +62,7 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 cd /path/to/mean-reversion-strat
 
 # Build using podman-compose (recommended)
-podman-compose build unified-bot
+podman-compose build trading-bot
 
 # Or build directly with Podman
 podman build -f Dockerfile.bot -t mean-reversion-bot:latest .
@@ -77,20 +77,20 @@ podman images | grep mean-reversion-bot
 
 ## Run Instructions
 
-> **Important**: The unified bot (unified_bot.py) is now the recommended way to run trading strategies. 
-> This section documents legacy individual scheduler usage. See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for unified bot setup.
+> **Important**: The trading bot (trading_bot.py) is the recommended way to run trading strategies.
+> This section documents legacy individual scheduler usage. See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for trading bot setup.
 
 ### Using Podman Compose (Recommended)
 
 ```bash
-# Run the unified bot (recommended)
-podman-compose up -d unified-bot
+# Run the trading bot (recommended)
+podman-compose up -d trading-bot
 
 # View logs
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 
 # Stop the bot
-podman-compose stop unified-bot
+podman-compose stop trading-bot
 ```
 
 ### Legacy: Basic Run (with .env file)
@@ -178,14 +178,14 @@ podman run --rm \
 ### View Container Logs (Podman Compose)
 
 ```bash
-# View logs from running unified bot
-podman-compose logs unified-bot
+# View logs from running trading bot
+podman-compose logs trading-bot
 
 # Follow logs in real-time
-podman-compose logs -f unified-bot
+podman-compose logs -f trading-bot
 
 # View last 100 lines
-podman-compose logs --tail=100 unified-bot
+podman-compose logs --tail=100 trading-bot
 ```
 
 ### View Container Logs (Direct Podman)
@@ -223,8 +223,8 @@ podman inspect mean-reversion-bot
 ### Using Podman Compose (Recommended)
 
 ```bash
-# Stop the unified bot
-podman-compose stop unified-bot
+# Stop the trading bot
+podman-compose stop trading-bot
 
 # Remove the container (keeps image)
 podman-compose down
@@ -261,7 +261,7 @@ podman rm mean-reversion-bot
 ```
 ImportError: attempted relative import with no known parent package
 ```
-**Solution**: This has been fixed in Dockerfile.bot. If you encounter this, rebuild the Podman image with `podman-compose build unified-bot`.
+**Solution**: This has been fixed in Dockerfile.bot. If you encounter this, rebuild the Podman image with `podman-compose build trading-bot`.
 
 #### 2. "Configuration file not found"
 ```
@@ -296,7 +296,7 @@ To run with more verbose logging:
 
 ```bash
 # Run with debug logging using podman-compose
-podman-compose up unified-bot  # Remove -d flag to see logs
+podman-compose up trading-bot  # Remove -d flag to see logs
 
 # Or run directly with Docker
 podman run --rm \
@@ -314,7 +314,7 @@ To access the container for debugging:
 
 ```bash
 # Using podman-compose
-podman-compose exec unified-bot /bin/bash
+podman-compose exec trading-bot /bin/bash
 
 # Or run interactive shell directly
 podman run -it --rm \
@@ -351,7 +351,7 @@ podman run -it --rm \
 
 For production deployment, consider:
 
-1. **Use Unified Bot**: Use podman-compose with unified-bot service (see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md))
+1. **Use Trading Bot**: Use podman-compose with trading-bot service (see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md))
 2. **Container Orchestration**: Use Podman Compose or Kubernetes
 3. **Cloud Deployment**: See [AWS_ECS_DEPLOYMENT.md](AWS_ECS_DEPLOYMENT.md) for AWS setup
 4. **Health Checks**: Implement health check endpoints (already configured in podman-compose.yml)
@@ -359,9 +359,9 @@ For production deployment, consider:
 6. **Backup**: Regular backup of logs and configurations
 7. **Resource Limits**: Set appropriate CPU and memory limits
 
-## Migration to Unified Bot
+## Trading Bot
 
-The unified bot (unified_bot.py) is the recommended approach for running trading strategies. It provides:
+The trading bot (trading_bot.py) is the recommended approach for running trading strategies. It provides:
 
 - **Parallel execution**: Run multiple strategies simultaneously
 - **Shared infrastructure**: Single Telegram bot and signal cache

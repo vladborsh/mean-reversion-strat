@@ -12,7 +12,7 @@ from typing import Dict, Any, List
 import pandas as pd
 
 from .strategy_executor import StrategyExecutor
-from src.bot.live_signal_detector import LiveSignalDetector
+from src.bot.signal_detector import LiveSignalDetector
 from src.symbol_config_manager import SymbolConfigManager
 
 logger = logging.getLogger(__name__)
