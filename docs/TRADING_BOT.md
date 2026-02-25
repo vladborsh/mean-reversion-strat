@@ -6,12 +6,12 @@ The **Trading Bot** (`trading_bot.py`) is a trading bot that runs multiple tradi
 
 ## Key Features
 
-✅ **Parallel Strategy Execution** - Run multiple strategies concurrently for better performance  
-✅ **Shared Infrastructure** - Single Telegram bot and signal cache across all strategies  
-✅ **Error Isolation** - One strategy failure doesn't stop others from running  
-✅ **Flexible Configuration** - Enable/disable strategies via `bot_config.json`  
-✅ **Separate Strategy Configs** - Each strategy keeps its own configuration file  
-✅ **News Scheduler Removed** - Cleaner architecture without news integration  
+✅ **Parallel Strategy Execution** - Run multiple strategies concurrently for better performance
+✅ **Shared Infrastructure** - Single Telegram bot and signal cache across all strategies
+✅ **Error Isolation** - One strategy failure doesn't stop others from running
+✅ **Flexible Configuration** - Enable/disable strategies via `bot_config.json`
+✅ **Separate Strategy Configs** - Each strategy keeps its own configuration file
+✅ **Integrated News Scheduler** - Economic news notifications at 7am UTC (weekdays only)
 ✅ **Better Resource Management** - Shared Capital.com connections and caching  
 
 ## Architecture
@@ -23,7 +23,8 @@ trading_bot.py
 │   │   ├── TelegramBotManager (singleton)
 │   │   ├── SignalCache (shared)
 │   │   ├── SignalChartGenerator (shared)
-│   │   └── Capital.com fetcher (shared)
+│   │   ├── Capital.com fetcher (shared)
+│   │   └── NewsScheduler (daily 7am UTC)
 │   │
 │   ├── Strategy Executors
 │   │   ├── MeanReversionExecutor
@@ -34,7 +35,8 @@ trading_bot.py
 │   └── Parallel Execution
 │       ├── asyncio.gather() for concurrency
 │       ├── Error isolation per strategy
-│       └── Aggregated results
+│       ├── Aggregated results
+│       └── Daily news execution (7am UTC)
 ```
 
 ## Configuration
@@ -90,6 +92,19 @@ The master configuration file controls which strategies are enabled and their se
     "use_persistence": true,
     "price_tolerance": 0.0005,
     "cache_duration_hours": 24
+  },
+
+  "news": {
+    "enabled": true,
+    "description": "Economic news scheduler - runs daily at 7am UTC (weekdays)",
+    "execution_hour_utc": 7,
+    "execution_minute": 0,
+    "execution_second": 15,
+    "skip_weekends": true,
+    "relevant_currencies": ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "NZD", "CHF"],
+    "impact_filter": ["High", "Medium"],
+    "min_events_threshold": 20,
+    "emoji": "📰"
   }
 }
 ```
@@ -180,10 +195,12 @@ The trading bot consolidates previously separate schedulers into a single, effic
    - Telegram bot (if enabled)
    - Signal cache (with DynamoDB persistence)
    - Chart generator
+   - News scheduler (if enabled)
 3. Initialize enabled strategy executors:
    - MeanReversionExecutor → loads assets_config_wr45.json
    - CustomStrategyExecutor → loads assets_config_custom_strategies.json
-4. Start Telegram bot
+4. News scheduler checks for current week events
+5. Start Telegram bot
 ```
 
 ### 2. Strategy Cycle (Every 5 Minutes)
@@ -205,7 +222,23 @@ The trading bot consolidates previously separate schedulers into a single, effic
 6. Log aggregated summary
 ```
 
-### 3. Error Handling
+### 3. Daily News Cycle (7am UTC, Weekdays Only)
+
+```
+1. Check if it's 7am UTC and a weekday (Monday-Friday)
+2. Check if current week has <20 events in storage
+3. Fetch news from economic calendar if needed:
+   - Fetches events for current week
+   - Filters by relevant currencies (USD, EUR, GBP, etc.)
+   - Filters by impact level (High, Medium)
+4. Send daily summary notifications:
+   - USD events: High + Medium impact
+   - Other currencies: High impact only
+5. Log tomorrow's scheduled events
+6. Skip on weekends (Saturday, Sunday)
+```
+
+### 4. Error Handling
 
 **Strategy-Level Isolation**:
 ```python
@@ -461,8 +494,8 @@ A: Yes! Just update the `config_file` path in `bot_config.json`.
 **Q: Do I need to change my existing strategy configs?**
 A: No! The trading bot uses the same config formats as before.
 
-**Q: What happened to the news scheduler?**
-A: It was removed for cleaner architecture. Can be added as a separate service if needed.
+**Q: How does the news scheduler work?**
+A: The news scheduler is integrated into the trading bot. It runs daily at 7am UTC (weekdays only), checks if the current week has news events, fetches them if needed (<20 events threshold), and sends a daily summary via Telegram. Set `"news": {"enabled": false}` in `bot_config.json` to disable.
 
 **Q: How do I add a new strategy?**  
 A: Create an executor class, add to `bot_config.json`, update orchestrator. See "Adding New Strategies" section.
@@ -473,5 +506,6 @@ The Trading Bot provides:
 - **Better Performance**: Parallel execution, shared resources
 - **Cleaner Code**: Consolidated architecture, easier to maintain
 - **Better Reliability**: Error isolation, robust error handling
-- **More Flexible**: Easy to enable/disable strategies
+- **More Flexible**: Easy to enable/disable strategies and news
 - **Future-Proof**: Easy to add new strategies
+- **News Integration**: Economic calendar notifications at 7am UTC (weekdays only)

@@ -115,7 +115,7 @@ class NewsFetcher:
             return False
         
         # Validate impact level
-        valid_impacts = ['Low', 'Medium', 'High']
+        valid_impacts = ['Low', 'Medium', 'High', 'Holiday']
         if event['impact'] not in valid_impacts:
             logger.debug(f"Invalid impact level: {event['impact']}")
             return False

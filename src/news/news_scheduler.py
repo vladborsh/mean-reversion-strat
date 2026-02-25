@@ -25,15 +25,16 @@ logger = logging.getLogger(__name__)
 class NewsScheduler:
     """Component for news fetching and notification tasks"""
     
-    def __init__(self, bot_manager=None, symbols_config=None):
+    def __init__(self, bot_manager=None, symbols_config=None, bot_config=None):
         """Initialize the news scheduler component
-        
+
         Args:
             bot_manager: Existing TelegramBotManager instance
             symbols_config: Dictionary of trading symbols configuration
+            bot_config: News configuration from bot_config.json
         """
         # Initialize configuration
-        self.config = NewsConfig(symbols_config)
+        self.config = NewsConfig(symbols_config=symbols_config, bot_config=bot_config)
         
         # Initialize components
         self.storage = NewsDynamoDBStorage()
@@ -53,44 +54,60 @@ class NewsScheduler:
         """Log brief summary of today's events"""
         try:
             events = self.storage.get_today_events(
-                impact_filter=['High', 'Medium'],
+                impact_filter=self.config.impact_filter,
                 currency_filter=self.config.relevant_currencies
             )
-            
+
             if events:
                 high_count = sum(1 for e in events if e.get('impact') == 'High')
                 medium_count = sum(1 for e in events if e.get('impact') == 'Medium')
-                logger.info(f"Today's events: {len(events)} total (H:{high_count}, M:{medium_count})")
+                holiday_count = sum(1 for e in events if e.get('impact') == 'Holiday')
+                logger.info(f"Today's events: {len(events)} total (H:{high_count}, M:{medium_count}, Holidays:{holiday_count})")
             else:
                 logger.info("No significant events today")
-                
+
         except Exception as e:
             logger.debug(f"Could not retrieve today's events: {e}")
     
     
     async def initialize(self) -> bool:
-        """Initialize news components
-        
+        """
+        Initialize news components and check current week status
+
         Returns:
             True if successful
         """
         try:
-            # Components are initialized in constructor
-            # No async initialization needed as bot manager is passed in
             logger.info("News components initialized successfully")
-            
-            # Check if we need initial fetch
+
+            # Check current week events
             week_info = self.storage.has_current_week_events()
-            
-            if not week_info.get('has_events') or week_info.get('event_count', 0) < 10:
-                logger.info("Fetching news on startup - insufficient events for current week")
-                fetch_result = self.fetcher.fetch_and_save()
-                logger.info(f"Initial fetch: {fetch_result['saved']} new events")
+            event_count = week_info.get('event_count', 0)
+
+            if week_info.get('has_events'):
+                logger.info(f"✅ Current week has {event_count} events in storage")
+
+                # Check if news is recent (within last 3 days)
+                try:
+                    stats = self.storage.get_statistics()
+                    last_updated = stats.get('last_updated')
+
+                    if last_updated:
+                        days_old = (datetime.now(timezone.utc) - last_updated).days
+                        if days_old > 3:
+                            logger.warning(f"⚠️  News is {days_old} days old - will fetch on next cycle")
+                        else:
+                            logger.info(f"✅ News is current ({days_old} days old)")
+                except Exception as e:
+                    logger.debug(f"Could not check news age: {e}")
             else:
-                logger.info(f"Current week has {week_info.get('event_count')} events - skipping startup fetch")
-            
+                logger.info(f"⚠️  No events for current week (or <20 events) - will fetch on next cycle")
+
+            # Log today's events summary
+            self._log_todays_events_summary()
+
             return True
-            
+
         except Exception as e:
             logger.error(f"News initialization failed: {e}")
             return False
@@ -136,35 +153,118 @@ class NewsScheduler:
     async def send_daily_notifications(self) -> Dict[str, Any]:
         """
         Send daily news notifications with selective impact filtering
-        
+
         Returns:
             Notification statistics
         """
-        logger.info("Starting daily news notifications with selective filtering")
-        
+        logger.info("Starting daily news notifications (morning summary only)")
+
         try:
             # Send daily summary with selective impact filtering (USD: High+Medium, Others: High only)
             result = await self.notifier.send_daily_summary_selective(
                 currency_filter=self.config.relevant_currencies
             )
-            
-            # Also check for upcoming high-impact events in next 2 hours
-            if 'High' in self.config.impact_filter:
-                alerts_result = await self.notifier.send_high_impact_alerts(
-                    hours_ahead=2,
-                    currency_filter=self.config.relevant_currencies
-                )
-                result['high_impact_alerts'] = alerts_result
-            
+
             # Update last notification date
             self.last_notification_date = datetime.now(timezone.utc).date()
-            
+
             logger.info(f"Daily notifications complete: {result}")
             return result
-            
+
         except Exception as e:
             logger.error(f"Daily notifications failed: {e}")
             return {'sent': 0, 'failed': 0, 'total_chats': 0, 'events': 0}
+
+    async def run_daily_cycle(self) -> Dict[str, Any]:
+        """
+        Run daily news cycle at 7am UTC (weekdays only)
+
+        This is the simplified daily execution method called by the orchestrator:
+        1. Check if current week has news (threshold: 20 events)
+        2. Fetch news if needed (missing or insufficient)
+        3. Send daily summary notification
+
+        Returns:
+            Execution result with statistics
+        """
+        now = datetime.now(timezone.utc)
+        day_name = now.strftime('%A')
+
+        # Skip weekends
+        if day_name in ['Saturday', 'Sunday']:
+            logger.info(f"⏭️  Skipping news cycle - weekend ({day_name})")
+            return {
+                'status': 'skipped_weekend',
+                'day': day_name,
+                'timestamp': now.isoformat()
+            }
+
+        logger.info(f"📰 Running daily news cycle - {day_name} 7:00 UTC")
+
+        try:
+            # Check if we need to fetch news
+            week_info = self.storage.has_current_week_events()
+            event_count = week_info.get('event_count', 0)
+
+            fetch_result = {'saved': 0, 'skipped': 0}
+
+            # Fetch if missing or insufficient events (threshold: 20)
+            if not week_info.get('has_events') or event_count < 20:
+                logger.info(f"Fetching news - current week has {event_count} events (threshold: 20)")
+                fetch_result = self.fetcher.fetch_and_save()
+                logger.info(f"Fetch complete: {fetch_result['saved']} new, {fetch_result['skipped']} skipped")
+            else:
+                logger.info(f"Current week has {event_count} events - skipping fetch")
+
+            # Send daily notifications (selective filtering: USD High+Medium, Others High only)
+            notify_result = await self.notifier.send_daily_summary_selective(
+                currency_filter=self.config.relevant_currencies
+            )
+
+            logger.info(f"Daily notifications sent: {notify_result}")
+
+            # Log tomorrow's events
+            tomorrow = now.date() + timedelta(days=1)
+            tomorrow_events = self.storage.get_events_for_date(
+                tomorrow,
+                impact_filter=self.config.impact_filter,
+                currency_filter=self.config.relevant_currencies
+            )
+            if tomorrow_events:
+                logger.info(f"📅 Tomorrow's events: {len(tomorrow_events)} scheduled")
+            else:
+                logger.info("📅 No news events scheduled for tomorrow")
+
+            return {
+                'status': 'success',
+                'day': day_name,
+                'fetch': fetch_result,
+                'notifications': notify_result,
+                'tomorrow_events': len(tomorrow_events) if tomorrow_events else 0,
+                'timestamp': now.isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Daily news cycle failed: {e}", exc_info=True)
+
+            # Try to send error notification
+            try:
+                if self.notifier and self.notifier.bot_manager:
+                    await self.notifier.send_custom_news_message(
+                        "⚠️ *Daily News Cycle Error*\n\n"
+                        f"Failed to complete daily news cycle.\n"
+                        f"Error: `{str(e)}`\n\n"
+                        "_Will retry tomorrow at 7am UTC._"
+                    )
+            except:
+                pass
+
+            return {
+                'status': 'failed',
+                'day': day_name,
+                'error': str(e),
+                'timestamp': now.isoformat()
+            }
     
     def _is_fetch_day(self) -> bool:
         """
@@ -355,20 +455,6 @@ class NewsScheduler:
                         logger.info(f"📅 Tomorrow's events: {len(tomorrow_events)} scheduled")
                     else:
                         logger.info("📅 No news events scheduled for tomorrow")
-                
-                # Check for imminent events requiring urgent alerts (every minute)
-                if self.config.urgent_alert_enabled:
-                    try:
-                        # Check for events happening in 5-10 minutes with selective filtering
-                        urgent_result = await self.notifier.send_5min_alerts_selective(
-                            minutes_ahead=self.config.urgent_alert_minutes,
-                            currency_filter=self.config.relevant_currencies
-                        )
-                        
-                        if urgent_result['events'] > 0:
-                            logger.info(f"Sent urgent alerts for {urgent_result['events']} imminent events")
-                    except Exception as e:
-                        logger.error(f"Failed to send urgent alerts: {e}")
                 
                 # Sleep for 60 seconds before next check
                 await asyncio.sleep(60)

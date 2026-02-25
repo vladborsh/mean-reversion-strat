@@ -21,6 +21,7 @@ from src.bot.signal_cache import create_signal_cache
 from src.bot.signal_chart_generator import SignalChartGenerator
 from src.bot.telemetry import TelemetryCollector
 from src.capital_com_fetcher import create_capital_com_fetcher
+from src.news.news_scheduler import NewsScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +52,15 @@ class BotOrchestrator:
         self.signal_cache = None
         self.chart_generator = None
         self.telemetry = None
-        
+        self.news_scheduler = None
+
         # Strategy executors
         self.executors: Dict[str, Any] = {}
-        
+
         # State
         self.running = False
         self.bot_start_time = datetime.now(timezone.utc)
+        self.last_news_date = None  # Track last news execution date
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -123,7 +126,7 @@ class BotOrchestrator:
                     self.telemetry = None
             else:
                 logger.info("ℹ️  Telemetry collection disabled in config")
-            
+
             return True
             
         except Exception as e:
@@ -175,9 +178,36 @@ class BotOrchestrator:
                 logger.error(f"❌ Error initializing {strategy_name}: {e}")
         
         logger.info(f"\n📊 Initialized {success_count}/{len(enabled_strategies)} strategies")
-        
+
         return success_count > 0
-    
+
+    def _get_symbols_config(self) -> Dict[str, Any]:
+        """
+        Extract symbols configuration from all strategy executors
+
+        Returns:
+            Dictionary mapping symbols to their configuration
+        """
+        symbols_config = {}
+
+        for strategy_name, executor in self.executors.items():
+            try:
+                # Extract symbols from executor's symbol_configs
+                if hasattr(executor, 'symbol_configs'):
+                    for symbol_name, config in executor.symbol_configs.items():
+                        # Store symbol with its name for NewsConfig to extract currencies
+                        symbols_config[symbol_name] = {
+                            'symbol': symbol_name,
+                            'base_currency': symbol_name[:3] if len(symbol_name) >= 6 else None,
+                            'quote_currency': symbol_name[3:6] if len(symbol_name) >= 6 else None
+                        }
+                        logger.debug(f"Extracted symbol: {symbol_name} from {strategy_name}")
+            except Exception as e:
+                logger.debug(f"Could not extract symbols from {strategy_name}: {e}")
+
+        logger.info(f"Extracted symbols for news filtering: {list(symbols_config.keys())}")
+        return symbols_config
+
     async def initialize(self) -> bool:
         """
         Initialize all bot components
@@ -196,7 +226,25 @@ class BotOrchestrator:
         # Initialize strategy executors
         if not self._initialize_strategy_executors():
             return False
-        
+
+        # Initialize news scheduler AFTER executors (so we can extract symbols)
+        if self.config.is_news_enabled():
+            try:
+                # Extract symbols config from executors for news scheduler
+                symbols_config = self._get_symbols_config()
+                logger.info(f"📰 Extracted {len(symbols_config)} trading symbols for news filtering")
+                self.news_scheduler = NewsScheduler(
+                    bot_manager=self.telegram_bot,
+                    symbols_config=symbols_config,
+                    bot_config=self.config.get_news_config()
+                )
+                logger.info(f"✅ News scheduler initialized (daily execution at 7am UTC)")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize news scheduler: {e}")
+                self.news_scheduler = None
+        else:
+            logger.info("ℹ️  News scheduler disabled in config")
+
         # Initialize Telegram bot async components
         if self.telegram_bot:
             try:
@@ -206,10 +254,20 @@ class BotOrchestrator:
                     logger.warning("⚠️  Telegram bot async initialization failed")
             except Exception as e:
                 logger.error(f"❌ Telegram bot async initialization error: {e}")
-        
+
+        # Initialize news scheduler async components
+        if self.news_scheduler:
+            try:
+                if await self.news_scheduler.initialize():
+                    logger.info("✅ News scheduler async initialization complete")
+                else:
+                    logger.warning("⚠️  News scheduler async initialization failed")
+            except Exception as e:
+                logger.error(f"❌ News scheduler async initialization error: {e}")
+
         logger.info("\n✅ Bot initialization complete")
         logger.info("="*80 + "\n")
-        
+
         return True
     
     def _validate_trading_hours(self) -> bool:
@@ -498,6 +556,14 @@ class BotOrchestrator:
         logger.info(f"🕐 Trading hours: {trading_hours['start_hour_utc']}:00-{trading_hours['end_hour_utc']}:00 UTC")
         logger.info(f"📊 Active strategies: {len(self.executors)}")
         logger.info(f"📱 Telegram notifications: {'Enabled' if self.telegram_bot else 'Disabled'}")
+
+        # Log news scheduler status
+        if self.news_scheduler:
+            news_hour, news_minute, _ = self.config.get_news_execution_time()
+            logger.info(f"📰 News scheduler: Enabled (daily at {news_hour}:{news_minute:02d} UTC, weekdays only)")
+        else:
+            logger.info(f"📰 News scheduler: Disabled")
+
         logger.info("\nPress Ctrl+C to stop gracefully...\n")
         
         # Start Telegram bot if enabled
@@ -533,13 +599,34 @@ class BotOrchestrator:
             
             # Main scheduler loop
             last_run_minute = -1
-            
+
             while self.running:
                 try:
                     current_time = datetime.now(timezone.utc)
                     current_minute = current_time.minute
                     current_second = current_time.second
-                    
+
+                    # Check for news scheduler execution (7am UTC, weekdays only)
+                    if self.news_scheduler:
+                        news_hour, news_minute, news_second = self.config.get_news_execution_time()
+                        current_date = current_time.date()
+                        day_name = current_time.strftime('%A')
+
+                        # Execute at 7am UTC, on weekdays, once per day
+                        if (current_time.hour == news_hour and
+                            current_minute == news_minute and
+                            current_second == news_second and
+                            day_name not in ['Saturday', 'Sunday'] and
+                            self.last_news_date != current_date):
+
+                            logger.info(f"\n📰 Running daily news cycle - {day_name} {news_hour}:00 UTC")
+                            try:
+                                news_result = await self.news_scheduler.run_daily_cycle()
+                                self.last_news_date = current_date
+                                logger.info(f"✅ News cycle complete: {news_result.get('status')}")
+                            except Exception as e:
+                                logger.error(f"❌ News cycle failed: {e}")
+
                     # Check if at run interval mark and sync second
                     if current_minute % run_interval == 0 and current_second == sync_second and current_minute != last_run_minute:
                         if self._validate_trading_hours():

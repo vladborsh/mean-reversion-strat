@@ -201,7 +201,9 @@ class NewsDynamoDBStorage(DynamoDBBase):
         try:
             # Convert target_date to string for comparison
             target_date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
-            
+
+            logger.debug(f"get_events_for_date: date={target_date_str}, selective={selective_filtering}, currency_filter={currency_filter}")
+
             # Scan all items (since we don't have GSI on date alone)
             all_items = self.scan_with_filter()
             
@@ -240,18 +242,20 @@ class NewsDynamoDBStorage(DynamoDBBase):
                     # Apply selective impact filtering: USD=High+Medium, Others=High only
                     currency = item.get('country', '').upper()
                     impact = item.get('impact', 'Low')
-                    
+
                     should_include = False
                     if currency == 'USD' and impact in ['High', 'Medium']:
                         should_include = True
                     elif currency != 'USD' and impact == 'High':
                         should_include = True
-                    
+
                     if not should_include:
+                        logger.debug(f"Filtered out by impact: {item.get('title')} (currency={currency}, impact={impact})")
                         continue
-                        
+
                     # Apply currency filter if specified
                     if currency_filter and currency not in currency_filter:
+                        logger.debug(f"Filtered out by currency: {item.get('title')} (currency={currency}, filter={currency_filter})")
                         continue
                 else:
                     # Apply standard impact filter
@@ -281,72 +285,52 @@ class NewsDynamoDBStorage(DynamoDBBase):
             logger.error(f"Failed to get events for date {target_date}: {e}")
             return []
     
-    
-    def get_imminent_events(self, minutes_start: int = 5, minutes_end: int = 10,
-                           impact_filter: Optional[List[str]] = None,
-                           currency_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def get_events_in_range(self, start_date, end_date) -> List[Dict[str, Any]]:
         """
-        Get events happening within a specific minute window (for urgent alerts)
+        Get all events within a date range
         
         Args:
-            minutes_start: Start of window in minutes from now (default 5)
-            minutes_end: End of window in minutes from now (default 10)
-            impact_filter: List of impact levels to include
-            currency_filter: List of currencies to include
+            start_date: Start date (datetime.date object)
+            end_date: End date (datetime.date object)
             
         Returns:
-            List of imminent events that haven't been urgently notified yet
+            List of events in the date range
         """
-        now = datetime.now(timezone.utc)
-        start_time = now + timedelta(minutes=minutes_start)
-        end_time = now + timedelta(minutes=minutes_end)
-        
-        start_str = start_time.isoformat()
-        end_str = end_time.isoformat()
-        
         try:
-            # Scan for events in the specific time window
-            filter_expression = Attr('event_date').between(start_str, end_str)
+            # Get all events
+            all_events = self.scan_with_filter()
             
-            # Add impact filter if specified
-            if impact_filter:
-                impact_conditions = None
-                for impact in impact_filter:
-                    condition = Attr('impact').eq(impact)
-                    impact_conditions = condition if impact_conditions is None else impact_conditions | condition
+            # Convert dates to strings for comparison
+            start_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+            end_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
+            
+            # Filter events by date range
+            events_in_range = []
+            for event in all_events:
+                event_date_str = event.get('event_date', '')
+                if not event_date_str:
+                    continue
                 
-                if impact_conditions:
-                    filter_expression = filter_expression & impact_conditions
+                # Extract date part
+                try:
+                    if 'T' in event_date_str:
+                        date_part = event_date_str.split('T')[0]
+                    else:
+                        date_part = event_date_str.split(' ')[0] if ' ' in event_date_str else event_date_str
+                    
+                    # Check if date is in range
+                    if start_str <= date_part <= end_str:
+                        events_in_range.append(event)
+                        
+                except Exception as e:
+                    logger.debug(f"Could not parse date {event_date_str}: {e}")
+                    continue
             
-            # Add currency filter if specified
-            if currency_filter:
-                currency_conditions = None
-                for currency in currency_filter:
-                    condition = Attr('country').eq(currency)
-                    currency_conditions = condition if currency_conditions is None else currency_conditions | condition
-                
-                if currency_conditions:
-                    filter_expression = filter_expression & currency_conditions
-            
-            # IMPORTANT: Only get events that haven't been urgently notified yet
-            filter_expression = filter_expression & Attr('urgent_notified').eq(False)
-            
-            # Scan with filter
-            items = self.scan_with_filter(filter_expression=filter_expression)
-            
-            # Convert and sort
-            events = []
-            for item in items:
-                item = self.convert_decimal_to_number(item)
-                events.append(item)
-            
-            events.sort(key=lambda x: x.get('event_date', ''))
-            
-            logger.info(f"Found {len(events)} imminent events in {minutes_start}-{minutes_end} minute window")
-            return events
+            logger.debug(f"Found {len(events_in_range)} events between {start_str} and {end_str}")
+            return events_in_range
             
         except Exception as e:
-            logger.error(f"Failed to get imminent events: {e}")
+            logger.error(f"Failed to get events in range: {e}")
             return []
     
     def get_upcoming_events(self, hours: int = 24, impact_filter: Optional[List[str]] = None, 
@@ -488,34 +472,7 @@ class NewsDynamoDBStorage(DynamoDBBase):
         except Exception as e:
             logger.error(f"Failed to mark event {event_id} as notified: {e}")
             return False
-    
-    def mark_as_urgent_notified(self, event_id: str, event_date: str) -> bool:
-        """
-        Mark an event as urgently notified (5-minute alert sent)
-        
-        Args:
-            event_id: Event ID
-            event_date: Event date (sort key)
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            return self.update_item(
-                key={
-                    'event_id': event_id,
-                    'event_date': event_date
-                },
-                update_expression="SET urgent_notified = :true, urgent_notified_at = :now",
-                expression_values={
-                    ':true': True,
-                    ':now': datetime.now(timezone.utc).isoformat()
-                }
-            )
-        except Exception as e:
-            logger.error(f"Failed to mark event {event_id} as urgently notified: {e}")
-            return False
-    
+
     def mark_multiple_as_notified(self, events: List[Dict[str, Any]]) -> int:
         """
         Mark multiple events as notified
@@ -561,6 +518,7 @@ class NewsDynamoDBStorage(DynamoDBBase):
             high_impact = sum(1 for e in all_events if e.get('impact') == 'High')
             medium_impact = sum(1 for e in all_events if e.get('impact') == 'Medium')
             low_impact = sum(1 for e in all_events if e.get('impact') == 'Low')
+            holidays = sum(1 for e in all_events if e.get('impact') == 'Holiday')
             
             # Notification counts
             notified = sum(1 for e in all_events if e.get('notified', False))
@@ -595,6 +553,7 @@ class NewsDynamoDBStorage(DynamoDBBase):
                 'high_impact': high_impact,
                 'medium_impact': medium_impact,
                 'low_impact': low_impact,
+                'holidays': holidays,
                 'notified': notified,
                 'urgent_notified': urgent_notified,
                 'pending_notification': len(all_events) - notified,
@@ -606,7 +565,7 @@ class NewsDynamoDBStorage(DynamoDBBase):
             logger.info(f"📊 Database Statistics:")
             logger.info(f"  Total Events: {stats['total_events']}")
             logger.info(f"  Date Range: {stats['date_range']}")
-            logger.info(f"  Impact Levels: High={high_impact}, Medium={medium_impact}, Low={low_impact}")
+            logger.info(f"  Impact Levels: High={high_impact}, Medium={medium_impact}, Low={low_impact}, Holidays={holidays}")
             logger.info(f"  Notifications: Sent={notified}, Urgent={urgent_notified}, Pending={stats['pending_notification']}")
             logger.info(f"  Top Currencies: {', '.join([f'{c}({n})' for c, n in top_currencies.items()])}")
             
@@ -697,62 +656,42 @@ class NewsDynamoDBStorage(DynamoDBBase):
                 'error': str(e)
             }
     
-    def get_imminent_events_selective(self, minutes_start: int = 5, minutes_end: int = 10, 
-                                     currency_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def get_holidays(self, start_date=None, end_date=None, 
+                     currency_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Get imminent events with selective impact filtering (Medium+ for USD, High for others)
+        Get bank holidays within a date range
         
         Args:
-            minutes_start: Start of window in minutes from now (default 5)
-            minutes_end: End of window in minutes from now (default 10)
+            start_date: Start date (defaults to today)
+            end_date: End date (defaults to 1 week from start)
             currency_filter: List of currencies to include
             
         Returns:
-            List of imminent events with selective filtering that haven't been urgently notified yet
+            List of holiday events
         """
         try:
-            # Get all imminent events without impact filtering
-            all_imminent = self.get_imminent_events(
-                minutes_start=minutes_start, 
-                minutes_end=minutes_end, 
-                impact_filter=None,  # No impact filter here
-                currency_filter=currency_filter
-            )
+            if start_date is None:
+                start_date = datetime.now(timezone.utc).date()
+            if end_date is None:
+                end_date = start_date + timedelta(days=7)
             
-            filtered_events = []
-            usd_count = 0
-            other_count = 0
+            # Get all events in the date range
+            all_events = self.get_events_in_range(start_date, end_date)
             
-            for event in all_imminent:
-                currency = event.get('country', '').upper()
-                impact = event.get('impact', 'Low')
-                
-                # Apply selective filtering
-                should_include = False
-                
-                if currency == 'USD':
-                    # For USD: include High and Medium impact
-                    if impact in ['High', 'Medium']:
-                        should_include = True
-                        usd_count += 1
-                else:
-                    # For other currencies: include High impact only
-                    if impact == 'High':
-                        should_include = True
-                        other_count += 1
-                
-                if should_include:
-                    filtered_events.append(event)
+            # Filter for holidays
+            holidays = [e for e in all_events if e.get('impact') == 'Holiday']
             
-            logger.info(f"Selective filtering for imminent events: {len(filtered_events)} events "
-                       f"(USD H+M: {usd_count}, Others H: {other_count})")
+            # Apply currency filter
+            if currency_filter:
+                holidays = [e for e in holidays if e.get('country') in currency_filter]
             
-            return filtered_events
+            logger.info(f"Found {len(holidays)} bank holidays between {start_date} and {end_date}")
+            return holidays
             
         except Exception as e:
-            logger.error(f"Failed to get imminent events with selective impact filter: {e}")
+            logger.error(f"Failed to get holidays: {e}")
             return []
-    
+
     def cleanup_old_events(self, days: int = 14) -> int:
         """
         Manually cleanup events older than specified days

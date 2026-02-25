@@ -181,6 +181,34 @@ class BotConfigLoader:
         """Get TUI monitor configuration"""
         return self.config.get('tui_monitor', {})
 
+    def is_news_enabled(self) -> bool:
+        """Check if news scheduler is enabled"""
+        news = self.config.get('news', {})
+        return news.get('enabled', False)
+
+    def get_news_config(self) -> Dict[str, Any]:
+        """Get news configuration"""
+        return self.config.get('news', {})
+
+    def get_news_execution_time(self) -> tuple:
+        """
+        Get news execution time (hour, minute, second)
+
+        Returns:
+            Tuple of (hour, minute, second) in UTC
+        """
+        news_config = self.get_news_config()
+        return (
+            news_config.get('execution_hour_utc', 7),
+            news_config.get('execution_minute', 0),
+            news_config.get('execution_second', 15)
+        )
+
+    def get_news_emoji(self) -> str:
+        """Get emoji for news notifications"""
+        news_config = self.get_news_config()
+        return news_config.get('emoji', '📰')
+
 
 def create_config_loader(config_path: str = None) -> BotConfigLoader:
     """

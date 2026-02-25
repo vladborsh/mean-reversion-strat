@@ -21,7 +21,8 @@ class NewsMessageTemplates:
         self.impact_emojis = {
             'High': '🔴',
             'Medium': '🟡',
-            'Low': '⚪'
+            'Low': '⚪',
+            'Holiday': '🏖️'
         }
         
         self.currency_flags = {
@@ -76,10 +77,18 @@ class NewsMessageTemplates:
         high_impact = [e for e in events if e.get('impact') == 'High']
         medium_impact = [e for e in events if e.get('impact') == 'Medium']
         low_impact = [e for e in events if e.get('impact') == 'Low']
+        holidays = [e for e in events if e.get('impact') == 'Holiday']
         
         # Build message
         message = f"📅 *Economic Calendar - {date_str}*\n"
         message += f"_Total Events: {len(events)}_\n\n"
+        
+        # Holidays (show first for visibility)
+        if holidays:
+            message += f"{self.impact_emojis['Holiday']} *BANK HOLIDAYS ({len(holidays)})*\n"
+            for event in holidays:
+                message += self._format_holiday_line(event)
+            message += "\n"
         
         # High impact events
         if high_impact:
@@ -154,71 +163,7 @@ class NewsMessageTemplates:
             'text': message,
             'parse_mode': 'Markdown'
         }
-    
-    def get_urgent_alert(self, event: Dict[str, Any], minutes: int = 5) -> Dict[str, str]:
-        """
-        Get urgent alert message for imminent events (5 minutes before)
-        
-        Args:
-            event: Event dictionary
-            minutes: Minutes until event (default 5)
-            
-        Returns:
-            Formatted urgent alert message
-        """
-        # Parse event time
-        try:
-            event_datetime = datetime.fromisoformat(event.get('event_date', '').replace('Z', '+00:00'))
-            time_str = event_datetime.strftime('%H:%M UTC')
-        except:
-            try:
-                event_datetime = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
-                time_str = event_datetime.strftime('%H:%M UTC')
-            except:
-                time_str = 'Soon'
-        
-        # Get country flag
-        country = event.get('country', '')
-        flag = self.currency_flags.get(country, '🌍')
-        
-        # Get impact emoji
-        impact = event.get('impact', 'High')
-        impact_emoji = self.impact_emojis.get(impact, '🔴')
-        
-        # Build urgent message with attention-grabbing formatting
-        message = f"🚨 *URGENT: EVENT IN {minutes} MINUTES!* 🚨\n"
-        message += f"{'='*30}\n\n"
-        
-        message += f"{impact_emoji} *{event.get('title', 'Economic Event')}*\n"
-        message += f"{flag} {country} • {time_str}\n\n"
-        
-        message += f"⏰ *STARTS IN: {minutes} MINUTES*\n\n"
-        
-        # Add forecast and previous if available
-        forecast = event.get('forecast', '').strip()
-        previous = event.get('previous', '').strip()
-        
-        if forecast or previous:
-            message += f"📊 *Data:*\n"
-            if forecast:
-                message += f"   Forecast: `{forecast}`\n"
-            if previous:
-                message += f"   Previous: `{previous}`\n"
-            message += "\n"
-        
-        # Add warning message
-        message += f"⚠️ *Action Required:*\n"
-        message += f"• Check open positions in {country} pairs\n"
-        message += f"• Consider closing or adjusting positions\n"
-        message += f"• High volatility expected!\n\n"
-        
-        message += f"_This is a {impact.lower()}-impact event_"
-        
-        return {
-            'text': message.strip(),
-            'parse_mode': 'Markdown'
-        }
-    
+
     def get_weekly_fetch_summary(self, fetch_result: Dict[str, int]) -> Dict[str, str]:
         """
         Get summary message for weekly news fetch operation
@@ -341,6 +286,31 @@ class NewsMessageTemplates:
         # Add forecast if available for high impact
         if event.get('impact') == 'High' and event.get('forecast'):
             line += f" (f: {event.get('forecast')})"
+        
+        return line + "\n"
+    
+    def _format_holiday_line(self, event: Dict[str, Any]) -> str:
+        """
+        Format a bank holiday as a line item
+        
+        Args:
+            event: Holiday event dictionary
+            
+        Returns:
+            Formatted line string
+        """
+        currency = event.get('country', 'N/A')
+        flag = self.currency_flags.get(currency, '🌍')
+        
+        # Parse date
+        try:
+            event_datetime = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
+            date_str = event_datetime.strftime('%b %d')
+        except:
+            date_str = 'TBD'
+        
+        # Build line
+        line = f"  {flag} `{date_str}` - {currency}: Bank Holiday (Markets Closed)"
         
         return line + "\n"
     
