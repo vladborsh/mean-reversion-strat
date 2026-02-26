@@ -115,41 +115,45 @@ class NewsNotifier:
     async def send_daily_summary_selective(self, currency_filter: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Send daily news summary with selective impact filtering (Medium+ for USD, High for others)
-        
+
         Args:
             currency_filter: List of currencies to include
-            
+
         Returns:
             Dictionary with sending statistics
         """
-        logger.info("Preparing daily summary with selective impact filtering")
-        
+        logger.info(f"📰 Preparing daily summary with selective impact filtering (currencies: {currency_filter})")
+
         # Get today's events with selective filtering
         events = self.storage.get_today_events_selective(currency_filter=currency_filter)
-        
+
         if not events:
-            logger.info("No events found for daily summary with selective filtering")
+            logger.warning("⚠️  No events found for daily summary with selective filtering")
             return {
                 'sent': 0,
                 'failed': 0,
                 'total_chats': 0,
                 'events': 0
             }
-        
+
+        logger.info(f"📊 Found {len(events)} events to notify about")
+
         # Get formatted message
         message_data = self.templates.get_daily_summary(events)
-        
+
         # Get active chats
         active_chats = self.bot_manager.chat_manager.get_active_chats()
-        
+
         if not active_chats:
-            logger.warning("No active chats found")
+            logger.warning("⚠️  No active chats found - notifications not sent")
             return {
                 'sent': 0,
                 'failed': 0,
                 'total_chats': 0,
                 'events': len(events)
             }
+
+        logger.info(f"📱 Sending to {len(active_chats)} active chat(s)")
         
         # Send to all active chats
         sent_count = 0
@@ -175,8 +179,12 @@ class NewsNotifier:
             'total_chats': len(active_chats),
             'events': len(events)
         }
-        
-        logger.info(f"Selective daily summary complete: {result}")
+
+        if sent_count > 0:
+            logger.info(f"✅ Daily summary sent successfully: {sent_count}/{len(active_chats)} chats, {len(events)} events")
+        else:
+            logger.warning(f"⚠️  Daily summary not sent: {failed_count} failures")
+
         return result
     
     async def send_high_impact_alerts(self, hours_ahead: int = 1, 

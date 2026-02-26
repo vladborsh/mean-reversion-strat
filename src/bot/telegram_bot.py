@@ -32,6 +32,12 @@ from .telegram_chat_manager import TelegramChatManager
 from .telegram_message_templates import TelegramMessageTemplates
 from .telegram_signal_notifier import TelegramSignalNotifier
 
+# Import news components for /news command
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from news.news_dynamodb_storage import NewsDynamoDBStorage
+from news.news_templates import NewsMessageTemplates
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +69,11 @@ class MeanReversionTelegramBot:
         self.chat_manager = TelegramChatManager(use_dynamodb, table_name, region_name)
         self.templates = TelegramMessageTemplates()
         self.notifier = TelegramSignalNotifier(bot_token, self.chat_manager, self.templates)
-        
+
+        # Initialize news components for /news command
+        self.news_storage = NewsDynamoDBStorage(table_name=None, region_name=region_name)
+        self.news_templates = NewsMessageTemplates()
+
         # Statistics
         self.start_time = datetime.now()
         self.command_count = 0
@@ -86,6 +96,7 @@ class MeanReversionTelegramBot:
             self.application.add_handler(CommandHandler("stop", self._handle_stop))
             self.application.add_handler(CommandHandler("help", self._handle_help))
             self.application.add_handler(CommandHandler("status", self._handle_status))
+            self.application.add_handler(CommandHandler("news", self._handle_news))
             
             # Add message handler for auto-registration (before unknown command handler)
             if self.auto_register_chats:
@@ -276,10 +287,57 @@ class MeanReversionTelegramBot:
             chat_id = update.effective_chat.id
             await self.notifier.send_status_message(chat_id)
             self.command_count += 1
-            
+
         except Exception as e:
             logger.error(f"Error handling /status command: {e}")
-    
+
+    async def _handle_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /news command - fetch and display today's economic calendar"""
+        try:
+            chat_id = update.effective_chat.id
+
+            # Auto-register chat if enabled
+            if self.auto_register_chats:
+                await self._auto_register_chat(update)
+
+            logger.info(f"News request from chat {chat_id}")
+
+            # Send "fetching" message
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="📰 Fetching today's economic calendar..."
+            )
+
+            # Get today's events with selective filtering (USD: High+Medium, Others: High only)
+            events = self.news_storage.get_today_events_selective()
+
+            # Get formatted message
+            message_data = self.news_templates.get_daily_summary(events)
+
+            # Send the news summary
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=message_data['text'],
+                parse_mode=message_data.get('parse_mode', 'Markdown'),
+                disable_web_page_preview=True
+            )
+
+            # Update statistics
+            self.command_count += 1
+            self.chat_manager.update_chat_activity(chat_id, 'news_command')
+
+            logger.info(f"News sent to chat {chat_id}: {len(events)} events")
+
+        except Exception as e:
+            logger.error(f"Error handling /news command: {e}")
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="❌ Sorry, there was an error fetching the news. Please try again later."
+                )
+            except:
+                pass
+
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle regular text messages (for auto-registration)"""
         try:

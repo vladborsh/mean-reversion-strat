@@ -221,7 +221,7 @@ class NewsScheduler:
                 currency_filter=self.config.relevant_currencies
             )
 
-            logger.info(f"Daily notifications sent: {notify_result}")
+            logger.info(f"📊 Daily notifications: sent={notify_result.get('sent', 0)}, failed={notify_result.get('failed', 0)}, events={notify_result.get('events', 0)}, chats={notify_result.get('total_chats', 0)}")
 
             # Log tomorrow's events
             tomorrow = now.date() + timedelta(days=1)

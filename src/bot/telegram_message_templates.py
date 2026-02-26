@@ -56,9 +56,12 @@ class TelegramMessageTemplates:
             'help': {
                 'text': "📋 *Available Commands:*\n\n"
                         "• /start - Start receiving signals\n"
-                        "• /stop - Stop receiving signals  \n"
+                        "• /stop - Stop receiving signals\n"
+                        "• /news - Get today's economic calendar\n"
+                        "• /status - Show bot status\n"
                         "• /help - Show this help message\n\n"
-                        "🔔 You'll automatically receive trading signals during market hours.",
+                        "🔔 You'll automatically receive trading signals during market hours.\n"
+                        "📰 Daily economic news is sent at 7:00 UTC.",
                 'parse_mode': 'Markdown'
             },
             

@@ -608,24 +608,33 @@ class BotOrchestrator:
 
                     # Check for news scheduler execution (7am UTC, weekdays only)
                     if self.news_scheduler:
-                        news_hour, news_minute, news_second = self.config.get_news_execution_time()
+                        news_hour, news_minute, _ = self.config.get_news_execution_time()
                         current_date = current_time.date()
                         day_name = current_time.strftime('%A')
 
-                        # Execute at 7am UTC, on weekdays, once per day
-                        if (current_time.hour == news_hour and
+                        # Execute during the news minute (7:00-7:01 UTC), on weekdays, once per day
+                        # Using minute-based check instead of exact second to avoid timing issues
+                        should_execute_news = (
+                            current_time.hour == news_hour and
                             current_minute == news_minute and
-                            current_second == news_second and
                             day_name not in ['Saturday', 'Sunday'] and
-                            self.last_news_date != current_date):
+                            self.last_news_date != current_date
+                        )
 
-                            logger.info(f"\n📰 Running daily news cycle - {day_name} {news_hour}:00 UTC")
+                        if should_execute_news:
+                            logger.info(f"\n📰 Running daily news cycle - {day_name} {current_time.strftime('%H:%M')} UTC")
                             try:
                                 news_result = await self.news_scheduler.run_daily_cycle()
                                 self.last_news_date = current_date
-                                logger.info(f"✅ News cycle complete: {news_result.get('status')}")
+                                logger.info(f"✅ News cycle complete: {news_result.get('status')}, sent to {news_result.get('notifications', {}).get('sent', 0)} chats")
                             except Exception as e:
                                 logger.error(f"❌ News cycle failed: {e}")
+                        elif current_time.hour == news_hour and current_minute == news_minute:
+                            # We're in the news minute but conditions not met - log why
+                            if day_name in ['Saturday', 'Sunday']:
+                                logger.debug(f"⏭️  Skipping news - weekend ({day_name})")
+                            elif self.last_news_date == current_date:
+                                logger.debug(f"⏭️  Skipping news - already sent today ({current_date})")
 
                     # Check if at run interval mark and sync second
                     if current_minute % run_interval == 0 and current_second == sync_second and current_minute != last_run_minute:
