@@ -81,8 +81,8 @@ class NewsNotifier:
         message_data = self.templates.get_daily_summary(events)
         
         # Get active chats
-        active_chats = self.bot_manager.chat_manager.get_active_chats()
-        
+        active_chats = self.bot_manager.bot.chat_manager.get_active_chats()
+
         if not active_chats:
             logger.warning("No active chats to send daily summary")
             return {
@@ -142,7 +142,7 @@ class NewsNotifier:
         message_data = self.templates.get_daily_summary(events)
 
         # Get active chats
-        active_chats = self.bot_manager.chat_manager.get_active_chats()
+        active_chats = self.bot_manager.bot.chat_manager.get_active_chats()
 
         if not active_chats:
             logger.warning("⚠️  No active chats found - notifications not sent")
@@ -154,25 +154,12 @@ class NewsNotifier:
             }
 
         logger.info(f"📱 Sending to {len(active_chats)} active chat(s)")
-        
-        # Send to all active chats
-        sent_count = 0
-        failed_count = 0
-        
-        for chat_id in active_chats:
-            try:
-                await self.bot_manager.send_message(
-                    chat_id=chat_id,
-                    message=message_data['message'],
-                    parse_mode='Markdown'
-                )
-                sent_count += 1
-                logger.info(f"Sent selective daily summary to chat {chat_id}")
-                
-            except Exception as e:
-                logger.error(f"Failed to send selective daily summary to chat {chat_id}: {e}")
-                failed_count += 1
-        
+
+        # Send to all active chats using shared broadcast helper
+        broadcast_results = await self._broadcast_message(message_data, active_chats)
+        sent_count = broadcast_results['sent']
+        failed_count = broadcast_results['failed']
+
         result = {
             'sent': sent_count,
             'failed': failed_count,
@@ -218,8 +205,8 @@ class NewsNotifier:
             }
         
         # Get active chats
-        active_chats = self.bot_manager.chat_manager.get_active_chats()
-        
+        active_chats = self.bot_manager.bot.chat_manager.get_active_chats()
+
         if not active_chats:
             logger.warning("No active chats for high-impact alerts")
             return {
@@ -287,8 +274,8 @@ class NewsNotifier:
         message_data = self.templates.get_upcoming_events(events, hours)
         
         # Get active chats
-        active_chats = self.bot_manager.chat_manager.get_active_chats()
-        
+        active_chats = self.bot_manager.bot.chat_manager.get_active_chats()
+
         if not active_chats:
             logger.warning("No active chats for upcoming events")
             return {
@@ -321,7 +308,7 @@ class NewsNotifier:
         message_data = self.templates.get_weekly_fetch_summary(fetch_result)
         
         # For now, send to all active chats (could be limited to admins)
-        active_chats = self.bot_manager.chat_manager.get_active_chats()
+        active_chats = self.bot_manager.bot.chat_manager.get_active_chats()
         
         if not active_chats:
             logger.warning("No active chats for fetch summary")
@@ -358,9 +345,9 @@ class NewsNotifier:
         }
         
         # Use the signal notifier from bot manager for actual sending
-        if hasattr(self.bot_manager, 'signal_notifier'):
-            # Reuse existing broadcast logic
-            send_results = await self.bot_manager.signal_notifier._send_to_multiple_chats(
+        if hasattr(self.bot_manager.bot, 'notifier'):
+            # Reuse existing broadcast logic via TelegramSignalNotifier
+            send_results = await self.bot_manager.bot.notifier._send_to_multiple_chats(
                 chat_ids, message_data
             )
             results.update(send_results)
@@ -368,16 +355,16 @@ class NewsNotifier:
             # Fallback to direct sending
             for chat_id in chat_ids:
                 try:
-                    await self.bot_manager.bot.send_message(
+                    await self.bot_manager.bot.application.bot.send_message(
                         chat_id=chat_id,
                         text=message_data['text'],
                         parse_mode=message_data.get('parse_mode', 'Markdown'),
                         disable_web_page_preview=True
                     )
                     results['sent'] += 1
-                    
+
                     # Update chat activity
-                    self.bot_manager.chat_manager.update_chat_activity(chat_id, 'news')
+                    self.bot_manager.bot.chat_manager.update_chat_activity(chat_id, 'news')
                     
                 except Exception as e:
                     logger.error(f"Failed to send to chat {chat_id}: {e}")
@@ -404,15 +391,15 @@ class NewsNotifier:
             'parse_mode': 'Markdown'
         }
         
-        active_chats = self.bot_manager.chat_manager.get_active_chats()
-        
+        active_chats = self.bot_manager.bot.chat_manager.get_active_chats()
+
         if not active_chats:
             return {
                 'sent': 0,
                 'failed': 0,
                 'total_chats': 0
             }
-        
+
         results = await self._broadcast_message(message_data, active_chats)
         
         logger.info(f"Custom message sent: {results['sent']}/{results['total_chats']} successful")
@@ -431,7 +418,7 @@ class NewsNotifier:
         return {
             'notifications_sent': self.notifications_sent,
             'last_notification': self.last_notification_time.isoformat() if self.last_notification_time else None,
-            'active_chats': self.bot_manager.chat_manager.get_active_chat_count(),
+            'active_chats': self.bot_manager.bot.chat_manager.get_active_chat_count(),
             'storage': storage_stats
         }
     
@@ -443,10 +430,10 @@ class NewsNotifier:
             True if connection successful
         """
         try:
-            if hasattr(self.bot_manager, 'signal_notifier'):
-                return await self.bot_manager.signal_notifier.test_bot_connection()
+            if hasattr(self.bot_manager.bot, 'notifier'):
+                return await self.bot_manager.bot.notifier.test_bot_connection()
             else:
-                bot_info = await self.bot_manager.bot.get_me()
+                bot_info = await self.bot_manager.bot.application.bot.get_me()
                 logger.info(f"Bot connection test successful: @{bot_info.username}")
                 return True
         except Exception as e:
