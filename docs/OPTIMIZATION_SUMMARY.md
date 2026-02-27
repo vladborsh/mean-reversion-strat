@@ -131,7 +131,7 @@ Based on the strategy documentation, this optimization system should help you:
 
 5. **Implement Best Parameters**:
    - Update `src/strategy_config.py` with optimized values
-   - Run full backtest with `python main.py`
+   - Run full backtest with `python scripts/run_backtest.py`
    - Validate performance improvements
 
 ### 🛠️ Advanced Features

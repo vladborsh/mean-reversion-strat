@@ -82,9 +82,9 @@ def run_tests():
     if passed == total:
         print("🎉 All tests passed! Your trading strategy is ready to run.")
         print("\nNext steps:")
-        print("1. Run 'python main.py' to execute the full strategy")
+        print("1. Run 'python scripts/run_backtest.py' to execute the full strategy")
         print("2. Check the README.md for detailed usage instructions")
-        print("3. Customize parameters in main.py as needed")
+        print("3. Customize parameters in scripts/run_backtest.py as needed")
     else:
         print("❌ Some tests failed. Please check the error messages above.")
 

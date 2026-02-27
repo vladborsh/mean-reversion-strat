@@ -303,8 +303,8 @@ No need to create a new test script - the unified script handles it automaticall
 ## Support & Documentation
 
 For more information:
-- **Custom Detectors**: See [CUSTOM_SIGNAL_DETECTORS.md](docs/CUSTOM_SIGNAL_DETECTORS.md)
-- **Scheduler Setup**: See [CUSTOM_SCHEDULER_README.md](CUSTOM_SCHEDULER_README.md)
+- **Custom Detectors**: See [CUSTOM_SIGNAL_DETECTORS.md](CUSTOM_SIGNAL_DETECTORS.md)
+- **Scheduler Setup**: See [Trading Bot Guide](TRADING_BOT.md)
 - **Config Examples**: Check `assets_config_custom_strategies.json`
 
 For issues:

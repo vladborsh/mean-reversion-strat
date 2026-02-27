@@ -50,9 +50,9 @@ All CLI tools now accept these parameters:
 **Examples:**
 ```bash
 # Strategy backtesting
-python main.py --cache-transport local --log-transport local    # All local (default)
-python main.py --cache-transport s3 --log-transport s3          # All S3
-python main.py --cache-transport local --log-transport s3       # Mixed
+python scripts/run_backtest.py --cache-transport local --log-transport local    # All local (default)
+python scripts/run_backtest.py --cache-transport s3 --log-transport s3          # All S3
+python scripts/run_backtest.py --cache-transport local --log-transport s3       # Mixed
 
 # Optimization
 python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
@@ -85,9 +85,9 @@ The transport layer is now configured via command-line arguments for better cont
 
 ```bash
 # Strategy backtesting with different transport configurations
-python main.py --cache-transport local --log-transport local    # Default
-python main.py --cache-transport s3 --log-transport s3          # Full S3
-python main.py --cache-transport local --log-transport s3       # Mixed mode
+python scripts/run_backtest.py --cache-transport local --log-transport local    # Default
+python scripts/run_backtest.py --cache-transport s3 --log-transport s3          # Full S3
+python scripts/run_backtest.py --cache-transport local --log-transport s3       # Mixed mode
 
 # Optimization with transport selection
 python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
@@ -221,7 +221,7 @@ The system includes robust error handling:
 python cache_manager.py info --cache-transport local > local_cache_info.txt
 
 # Start using S3 for new operations (existing local data remains)
-python main.py --cache-transport s3 --log-transport s3
+python scripts/run_backtest.py --cache-transport s3 --log-transport s3
 python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
 
 # Optional: Manually upload existing local data to S3 if needed
@@ -237,7 +237,7 @@ aws s3 sync s3://your-bucket/mean-reversion-strat/cache/ ./cache/
 aws s3 sync s3://your-bucket/mean-reversion-strat/optimization/ ./optimization/
 
 # Start using local transport
-python main.py --cache-transport local --log-transport local
+python scripts/run_backtest.py --cache-transport local --log-transport local
 python optimize_strategy.py --grid-search balanced --cache-transport local --log-transport local
 ```
 
@@ -254,7 +254,7 @@ LOG_TRANSPORT=s3
 **New approach (CLI arguments):**
 ```bash
 # Remove from .env file and use CLI arguments instead
-python main.py --cache-transport s3 --log-transport s3
+python scripts/run_backtest.py --cache-transport s3 --log-transport s3
 python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
 python cache_manager.py info --cache-transport s3
 ```

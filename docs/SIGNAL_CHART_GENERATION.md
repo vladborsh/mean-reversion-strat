@@ -8,7 +8,7 @@ The signal chart generation system creates professional candlestick charts with 
 
 ### Core Component
 - **[SignalChartGenerator](../src/bot/signal_chart_generator.py)** - Main chart generation class
-- **Integration** - Used by [Live Strategy Scheduler](../live_strategy_scheduler.py) → [Telegram Bot](TELEGRAM_BOT_INTEGRATION.md)
+- **Integration** - Used by [Trading Bot](../trading_bot.py) → [Telegram Bot](TELEGRAM_BOT_INTEGRATION.md)
 
 ### Dependencies
 - **mplfinance** - Professional candlestick charting
@@ -49,24 +49,39 @@ vwap, vwap_upper, vwap_lower = Indicators.vwap_daily_reset_forex_compatible(df, 
 5. **Output** - BytesIO buffer for [Telegram transmission](TELEGRAM_BOT_INTEGRATION.md)
 
 ### Integration Points
-- **[Live Scheduler](../live_strategy_scheduler.py)** - Calls chart generation on signal detection
+- **[Trading Bot](../trading_bot.py)** - Calls chart generation on signal detection
 - **[Telegram Notifier](../src/bot/telegram_signal_notifier.py)** - Sends charts via `send_photo()`
 - **[Strategy Parameters](STRATEGY_DOCUMENTATION.md)** - BB/VWAP window and std dev settings
 
 ## Usage
 
-### Basic Generation
+### Basic Generation (preferred — pre-calculated indicators)
 ```python
 from src.bot.signal_chart_generator import SignalChartGenerator
+from src.indicators import Indicators
 
 generator = SignalChartGenerator()
+
+# Calculate indicators once in the strategy
+bb_ma, bb_upper, bb_lower = Indicators.bollinger_bands(df, window=20, num_std=2)
+vwap, vwap_upper, vwap_lower = Indicators.vwap_daily_reset_forex_compatible(df, num_std=2)
+rsi = Indicators.rsi(df, period=14)
+
+indicators = {
+    'bb': pd.DataFrame({'ma': bb_ma, 'upper': bb_upper, 'lower': bb_lower}, index=df.index),
+    'vwap': pd.DataFrame({'vwap': vwap, 'upper': vwap_upper, 'lower': vwap_lower}, index=df.index),
+    'rsi': pd.DataFrame({'rsi': rsi}, index=df.index),
+}
+
 chart_buffer = generator.generate_signal_chart(
-    data=ohlcv_dataframe,
+    data=df,
     signal_data={'signal_type': 'long', 'entry_price': 1.1000, ...},
-    strategy_params={'bb_window': 20, 'bb_std': 2, 'vwap_std': 2},
+    indicators=indicators,
     symbol='EURUSD'
 )
 ```
+
+> **Deprecated**: Passing `strategy_params=` triggers internal indicator recalculation (duplication). Use `indicators=` with pre-calculated data instead. See [Refactoring Summary](REFACTORING_SUMMARY.md).
 
 ### Error Handling
 - **Fail-fast approach** - Returns None if indicator calculations fail

@@ -14,13 +14,13 @@ import pandas as pd
 import numpy as np
 
 def debug_main_visualization():
-    """Debug the exact same code path as main.py"""
+    """Debug the exact same code path as scripts/run_backtest.py"""
     print("Fetching EUR/USD data...")
     fetcher = DataFetcher(source='forex', symbol='EURUSD=X', timeframe='1h')
     df = fetcher.fetch(years=2)
     print(f"Data loaded: {len(df)} rows from {df.index[0]} to {df.index[-1]}")
     
-    # Calculate indicators exactly like main.py
+    # Calculate indicators exactly like scripts/run_backtest.py
     params = {
         'bb_window': 20, 'bb_std': 2, 'vwap_window': 20, 
         'vwap_std': 2, 'vwap_anchor': 'day', 'stop_loss': 0.02, 'take_profit': 0.04

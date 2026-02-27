@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 from dotenv import load_dotenv
-import os
 import pandas as pd
 import json
 from typing import Dict, Any, Optional
@@ -275,12 +278,12 @@ if __name__ == '__main__':
         epilog="""
 Examples:
   # Use optimized configs from results folder
-  python main.py --symbol EURUSD --timeframe 5m --preference balanced
-  python main.py --symbol AUDUSD --timeframe 5m --preference pnl
-  python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
-  
+  python scripts/run_backtest.py --symbol EURUSD --timeframe 5m --preference balanced
+  python scripts/run_backtest.py --symbol AUDUSD --timeframe 5m --preference pnl
+  python scripts/run_backtest.py --symbol GBPUSD --timeframe 5m --preference drawdown
+
   # Use default configuration (fallback)
-  python main.py --symbol BTCUSD --timeframe 15m
+  python scripts/run_backtest.py --symbol BTCUSD --timeframe 15m
         """
     )
     

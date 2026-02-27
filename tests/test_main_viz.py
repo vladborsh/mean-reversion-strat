@@ -15,11 +15,11 @@ def test_main_viz():
     """Test the main visualization pipeline"""
     print("Testing main visualization with fixed VWAP...")
     
-    # Fetch data like main.py
+    # Fetch data like scripts/run_backtest.py
     fetcher = DataFetcher(source='forex', symbol='EURUSD', timeframe='1h')
     df = fetcher.fetch(years=2)
     
-    # Calculate indicators like main.py
+    # Calculate indicators like scripts/run_backtest.py
     params = {
         'bb_window': 20, 'bb_std': 2, 'vwap_window': 20, 
         'vwap_std': 2, 'vwap_anchor': 'day', 'stop_loss': 0.02, 'take_profit': 0.04

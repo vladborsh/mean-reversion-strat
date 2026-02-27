@@ -22,24 +22,52 @@ A comprehensive trading strategy implementation using Bollinger Bands and VWAP f
 
 Comprehensive documentation is available in the `docs/` directory:
 
-- **[Trading Bot Guide](docs/TRADING_BOT.md)** - Parallel strategy execution and live trading
-- **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
-- **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic
-- **[Telemetry & TUI Monitor](docs/TELEMETRY_TUI_GUIDE.md)** - Real-time monitoring and telemetry system
-- **[Live Performance Verifier](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Historical performance analysis tool
-- **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
-- **[Post-Processing & Results Analysis](docs/POST_PROCESSING.md)** - Analyzing optimization results and generating PNL charts
-- **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Strategy performance evolution and improvements
+### Core Strategy
+- **[Strategy Documentation](docs/STRATEGY_DOCUMENTATION.md)** - Strategy logic and implementation
+- **[Indicators](docs/INDICATORS.md)** - Bollinger Bands, VWAP, RSI with divergence detection
 - **[Risk Management](docs/RISK_MANAGEMENT.md)** - Risk management features
-- **[Caching System](docs/CACHING.md)** - Data caching implementation
-- **[Container Documentation](docs/CONTAINER.md)** - Container usage and deployment
+- **[Market Regime Implementation](docs/MARKET_REGIME_IMPLEMENTATION.md)** - Market regime detection and filtering
+- **[Strategy Analysis & Concerns](docs/STRATEGY_ANALYSIS_AND_CONCERNS.md)** - Critical analysis and improvement roadmap
+- **[Capital.com Guide](docs/CAPITAL_COM_COMPLETE.md)** - API setup and usage
+
+### Live Trading & Bot
+- **[Trading Bot Guide](docs/TRADING_BOT.md)** - Parallel strategy execution and live trading
 - **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** - Real-time trading signals via Telegram
+- **[Signal Chart Generation](docs/SIGNAL_CHART_GENERATION.md)** - Chart generation for Telegram notifications
+- **[News System](docs/NEWS_SYSTEM_COMPLETE.md)** - Economic news scheduler and notifications
 - **[Signal Cache Persistence](docs/signal_cache_persistence.md)** - DynamoDB storage for duplicate signal prevention
 - **[Telegram DynamoDB Persistence](docs/telegram_dynamodb_persistence.md)** - DynamoDB storage for chat management
+- **[Telemetry & TUI Monitor](docs/TELEMETRY_TUI_GUIDE.md)** - Real-time monitoring and telemetry system
+- **[Live Performance Verifier](docs/LIVE_PERFORMANCE_VERIFIER.md)** - Historical performance analysis tool
+- **[Custom Signal Detectors](docs/CUSTOM_SIGNAL_DETECTORS.md)** - Custom signal detection strategies
+
+### Optimization & Analysis
+- **[Optimization Guide](docs/HYPERPARAMETER_OPTIMIZATION.md)** - Optimization methods
+- **[Optimization Summary](docs/OPTIMIZATION_SUMMARY.md)** - Summary of optimization system implementation
+- **[Post-Processing & Results Analysis](docs/POST_PROCESSING.md)** - Analyzing optimization results and PNL charts
+- **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Strategy performance evolution and improvements
+- **[Order Accumulation](docs/ORDER_ACCUMULATION.md)** - Automatic order collection during optimization
+- **[Validation Improvements Roadmap](docs/VALIDATION_IMPROVEMENTS_ROADMAP.md)** - Critical validation requirements before live trading
+- **[Drawdown Prevention Roadmap](docs/DRAWDOWN_PREVENTION_ROADMAP.md)** - Risk management feature backlog
+
+### Data & Infrastructure
+- **[Data Fetching Guide](docs/DATA_FETCHING_GUIDE.md)** - Multi-provider data fetching with flexible date ranges
+- **[Caching System](docs/CACHING.md)** - Data caching implementation
+- **[Transport Layer](docs/TRANSPORT_LAYER.md)** - Storage backends and configuration
+
+### Testing
+- **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing custom strategies with historical data
+
+### Deployment
+- **[Container Documentation](docs/CONTAINER.md)** - Container usage and deployment
 - **[Bot Docker Instructions](docs/BOT_DOCKER_INSTRUCTIONS.md)** - Container deployment for the bot
+- **[Docker Deployment](docs/DOCKER_DEPLOYMENT.md)** - Comprehensive Podman deployment guide
 - **[AWS Batch Setup](docs/AWS_BATCH_SETUP.md)** - AWS Batch configuration and deployment
 - **[AWS Batch Scripts](docs/AWS_BATCH_SCRIPTS.md)** - Ready-to-use job submission and monitoring scripts
-- **[Transport Layer](docs/TRANSPORT_LAYER.md)** - Storage backends and configuration
+- **[AWS ECS Deployment](docs/AWS_ECS_DEPLOYMENT.md)** - Deploying the bot on AWS ECS
+
+### Developer Notes
+- **[Refactoring Summary](docs/REFACTORING_SUMMARY.md)** - Chart generation module refactoring details
 
 ## Features
 
@@ -59,7 +87,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 ### 1. Clone or Navigate to Project Directory
 ```bash
-cd /Users/Vladyslav_Borsh/Documents/dev/mean-reversion-strat
+cd mean-reversion-strat
 ```
 
 ### 2. Python Environment Setup
@@ -112,12 +140,6 @@ TELEGRAM_BOT_TOKEN="your_telegram_bot_token_here"
 
 See **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** for detailed setup instructions.
 
-**Benefits of Capital.com integration:**
-- High-frequency data (5m, 15m intervals)
-- Proper forex trading hours handling
-- Professional-grade institutional data
-- Automatic session management
-
 ## High-Level Architecture
 
 ```
@@ -153,10 +175,10 @@ See **[Telegram Bot Integration](docs/TELEGRAM_BOT_INTEGRATION.md)** for detaile
 
 ```bash
 # Run with optimized configuration (recommended)
-python main.py --symbol EURUSD --timeframe 5m --preference balanced
+python scripts/run_backtest.py --symbol EURUSD --timeframe 5m --preference balanced
 
 # Run the main strategy with default parameters (fallback)
-python main.py
+python scripts/run_backtest.py
 
 # Basic optimization with balanced objective
 python optimize_strategy.py --quick-test
@@ -260,18 +282,18 @@ The main strategy now supports using **pre-optimized configurations** from the r
 
 ```bash
 # Use optimized configurations based on preference
-python main.py --symbol EURUSD --timeframe 5m --preference balanced
-python main.py --symbol AUDUSD --timeframe 5m --preference pnl  
-python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
+python scripts/run_backtest.py --symbol EURUSD --timeframe 5m --preference balanced
+python scripts/run_backtest.py --symbol AUDUSD --timeframe 5m --preference pnl  
+python scripts/run_backtest.py --symbol GBPUSD --timeframe 5m --preference drawdown
 
 # Run with S3 storage for cache and logs
-python main.py --symbol EURGBP --timeframe 5m --preference balanced --cache-transport s3 --log-transport s3
+python scripts/run_backtest.py --symbol EURGBP --timeframe 5m --preference balanced --cache-transport s3 --log-transport s3
 
 # Mixed storage: local cache, S3 logs
-python main.py --symbol NZDUSD --timeframe 5m --preference drawdown --cache-transport local --log-transport s3
+python scripts/run_backtest.py --symbol NZDUSD --timeframe 5m --preference drawdown --cache-transport local --log-transport s3
 
 # Fallback to default config if optimized config not found
-python main.py --symbol BTCUSD --timeframe 15m --preference balanced
+python scripts/run_backtest.py --symbol BTCUSD --timeframe 15m --preference balanced
 ```
 
 **New Arguments:**
@@ -508,10 +530,10 @@ Transport type is now specified via command-line arguments instead of environmen
 **Examples:**
 ```bash
 # Use local storage for everything (default)
-python main.py --cache-transport local --log-transport local
+python scripts/run_backtest.py --cache-transport local --log-transport local
 
 # Use S3 for cache, local for logs
-python main.py --cache-transport s3 --log-transport local
+python scripts/run_backtest.py --cache-transport s3 --log-transport local
 
 # Use S3 for everything
 python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
@@ -531,7 +553,7 @@ LOG_TRANSPORT=s3
 **New approach (current):**
 ```bash
 # Use CLI arguments instead
-python main.py --cache-transport s3 --log-transport s3
+python scripts/run_backtest.py --cache-transport s3 --log-transport s3
 python optimize_strategy.py --grid-search balanced --cache-transport s3 --log-transport s3
 python cache_manager.py info --cache-transport s3 --log-transport s3
 ```
@@ -552,15 +574,15 @@ All strategy scripts support these transport arguments:
 | `--log-transport` | `local`, `s3` | `local` | Where to store optimization logs/results |
 
 **Available in:**
-- `main.py` - Main strategy backtesting
+- `scripts/run_backtest.py` - Main strategy backtesting
 - `optimize_strategy.py` - Hyperparameter optimization
 - `cache_manager.py` - Cache management utilities
 
 **Examples:**
 ```bash
 # Different combinations for different use cases
-python main.py --cache-transport local --log-transport local    # All local (default)
-python main.py --cache-transport s3 --log-transport local       # S3 cache, local logs
-python main.py --cache-transport local --log-transport s3       # Local cache, S3 logs  
-python main.py --cache-transport s3 --log-transport s3          # All S3
+python scripts/run_backtest.py --cache-transport local --log-transport local    # All local (default)
+python scripts/run_backtest.py --cache-transport s3 --log-transport local       # S3 cache, local logs
+python scripts/run_backtest.py --cache-transport local --log-transport s3       # Local cache, S3 logs  
+python scripts/run_backtest.py --cache-transport s3 --log-transport s3          # All S3
 ```

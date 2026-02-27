@@ -17,13 +17,13 @@ This document provides a comprehensive guide to the hyperparameter optimization 
 ✅ **Predefined Configurations** - Ready-to-use parameter grids for different scenarios  
 ✅ **Best Results Tracking** - Track best results by multiple objectives (PnL, Sharpe, Win Rate, etc.)  
 ✅ **Resume Capability** - Resume interrupted optimizations using cached results  
-✅ **🆕 Automated Configuration Loading** - Use optimized results directly in main.py without manual parameter updates
+✅ **🆕 Automated Configuration Loading** - Use optimized results directly in scripts/run_backtest.py without manual parameter updates
 
 ## Optimization Workflow
 
 1. **Run Optimization**: Use `optimize_strategy.py` to generate optimized configurations
 2. **Review Results**: Check `results/` folder for generated configuration files
-3. **Apply Configurations**: Use `main.py` with `--preference` to load optimized settings automatically
+3. **Apply Configurations**: Use `scripts/run_backtest.py` with `--preference` to load optimized settings automatically
 4. **Compare Performance**: See expected vs. actual performance metrics  
 
 ## Quick Start
@@ -34,9 +34,9 @@ For immediate use with optimized parameters:
 
 ```bash
 # Use optimized configurations from results folder
-python main.py --symbol EURUSD --timeframe 5m --preference balanced
-python main.py --symbol AUDUSD --timeframe 5m --preference pnl
-python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
+python scripts/run_backtest.py --symbol EURUSD --timeframe 5m --preference balanced
+python scripts/run_backtest.py --symbol AUDUSD --timeframe 5m --preference pnl
+python scripts/run_backtest.py --symbol GBPUSD --timeframe 5m --preference drawdown
 ```
 
 ### 2. Running New Optimizations
@@ -402,12 +402,12 @@ StrategyConfig.BOLLINGER_BANDS['std_dev'] = best_params['bb_std']
 StrategyConfig.RISK_MANAGEMENT['risk_per_position_pct'] = best_params['risk_per_position_pct']
 
 # Run main strategy with optimized parameters
-python main.py
+python scripts/run_backtest.py
 ```
 
 ## Using Optimized Configurations
 
-After running optimizations, the system generates configuration files in the `results/` folder that can be automatically loaded by `main.py`. This eliminates the need for manual parameter updates.
+After running optimizations, the system generates configuration files in the `results/` folder that can be automatically loaded by `scripts/run_backtest.py`. This eliminates the need for manual parameter updates.
 
 ### Automated Configuration Loading
 
@@ -415,9 +415,9 @@ The main strategy script now supports automatic loading of optimized configurati
 
 ```bash
 # Use optimized configurations from results folder
-python main.py --symbol EURUSD --timeframe 5m --preference balanced
-python main.py --symbol AUDUSD --timeframe 5m --preference pnl
-python main.py --symbol GBPUSD --timeframe 5m --preference drawdown
+python scripts/run_backtest.py --symbol EURUSD --timeframe 5m --preference balanced
+python scripts/run_backtest.py --symbol AUDUSD --timeframe 5m --preference pnl
+python scripts/run_backtest.py --symbol GBPUSD --timeframe 5m --preference drawdown
 ```
 
 ### Configuration Selection Types

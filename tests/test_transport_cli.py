@@ -70,26 +70,26 @@ def test_cli_argument_parsing():
     """Test CLI argument parsing for transport parameters"""
     print("\n🧪 Testing CLI argument parsing...")
     
-    # Test main.py arguments
-    print("Testing main.py CLI arguments...")
+    # Test scripts/run_backtest.py arguments
+    print("Testing scripts/run_backtest.py CLI arguments...")
     import subprocess
     import tempfile
-    
+
     try:
         result = subprocess.run([
-            sys.executable, 'main.py', '--help'
+            sys.executable, 'scripts/run_backtest.py', '--help'
         ], capture_output=True, text=True, timeout=10)
-        
+
         if '--cache-transport' in result.stdout and '--log-transport' in result.stdout:
-            print("✅ main.py CLI arguments are properly configured")
+            print("✅ scripts/run_backtest.py CLI arguments are properly configured")
         else:
-            print("❌ main.py CLI arguments missing transport options")
+            print("❌ scripts/run_backtest.py CLI arguments missing transport options")
             return False
-            
+
     except subprocess.TimeoutExpired:
-        print("⚠️  main.py help command timed out (acceptable)")
+        print("⚠️  scripts/run_backtest.py help command timed out (acceptable)")
     except Exception as e:
-        print(f"⚠️  Could not test main.py CLI: {e}")
+        print(f"⚠️  Could not test scripts/run_backtest.py CLI: {e}")
     
     # Test optimize_strategy.py arguments
     print("Testing optimize_strategy.py CLI arguments...")

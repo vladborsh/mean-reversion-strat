@@ -1,5 +1,4 @@
-"""
-Market Regime Detection - Implementation Summary
+# Market Regime Detection - Implementation Summary
 ===============================================
 
 Date: July 19, 2025
@@ -130,8 +129,8 @@ NEXT STEPS - IMMEDIATE ACTIONS
 
 1. RUN BACKTEST WITH REGIME FILTERING
    ```bash
-   cd /Users/Vladyslav_Borsh/Documents/dev/mean-reversion-strat
-   python main.py  # Run with default configuration (regime filtering enabled)
+   cd mean-reversion-strat
+   python scripts/run_backtest.py  # Run with default configuration (regime filtering enabled)
    ```
 
 2. COMPARE RESULTS
@@ -197,4 +196,3 @@ performance.
 
 The next critical step is to run backtests comparing performance with and without regime
 filtering to validate the expected improvements and fine-tune parameters if needed.
-"""
