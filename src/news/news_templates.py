@@ -134,9 +134,10 @@ class NewsMessageTemplates:
         currency = event.get('country', 'N/A')
         flag = self.currency_flags.get(currency, '🌍')
         
-        # Parse event time
+        # Parse event time (support both 'date' and 'event_date' field names)
         try:
-            event_datetime = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
+            date_val = event.get('event_date') or event.get('date', '')
+            event_datetime = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
             time_str = event_datetime.strftime('%H:%M UTC')
         except:
             time_str = 'Time TBD'
@@ -226,7 +227,8 @@ class NewsMessageTemplates:
         
         for event in events:
             try:
-                event_time = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
+                date_val = event.get('event_date') or event.get('date', '')
+                event_time = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
                 hours_until = (event_time - now).total_seconds() / 3600
                 
                 if hours_until <= 1:
@@ -273,13 +275,14 @@ class NewsMessageTemplates:
         flag = self.currency_flags.get(currency, '')
         title = event.get('title', 'Unknown')
         
-        # Parse time
+        # Parse time (support both 'date' and 'event_date' field names)
         try:
-            event_datetime = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
+            date_val = event.get('event_date') or event.get('date', '')
+            event_datetime = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
             time_str = event_datetime.strftime('%H:%M')
         except:
             time_str = 'TBD'
-        
+
         # Build line
         line = f"  {flag} `{time_str}` - {currency}: {title}"
         
@@ -302,9 +305,10 @@ class NewsMessageTemplates:
         currency = event.get('country', 'N/A')
         flag = self.currency_flags.get(currency, '🌍')
         
-        # Parse date
+        # Parse date (support both 'date' and 'event_date' field names)
         try:
-            event_datetime = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
+            date_val = event.get('event_date') or event.get('date', '')
+            event_datetime = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
             date_str = event_datetime.strftime('%b %d')
         except:
             date_str = 'TBD'
